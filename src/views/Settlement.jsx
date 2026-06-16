@@ -623,16 +623,15 @@ export default function Settlement({ records, setRecords, formatVal, currency, c
                           disabled={claimSubmitting}
                           className="action-btn" 
                           style={{ 
-                            backgroundColor: activeClaim.settlementStatus === 'Isolated Repair'
-                              ? 'transparent'
-                              : (hasDeficit ? 'var(--danger)' : 'var(--success)'),
                             background: activeClaim.settlementStatus === 'Isolated Repair'
                               ? 'linear-gradient(90deg, #f59e0b 0%, #ef4444 100%)'
-                              : undefined,
+                              : (hasDeficit 
+                                ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'
+                                : 'linear-gradient(135deg, #10b981 0%, #16a34a 100%)'),
                             color: '#fff', 
                             boxShadow: activeClaim.settlementStatus === 'Isolated Repair'
                               ? '0 4px 18px rgba(239,68,68,0.35)'
-                              : (hasDeficit ? '0 4px 12px var(--danger-glow)' : '0 4px 12px var(--success-glow)'),
+                              : (hasDeficit ? '0 4px 14px rgba(220, 38, 38, 0.35)' : '0 4px 14px rgba(22, 163, 74, 0.35)'),
                             width: '100%',
                             padding: '12px',
                             fontWeight: 700,

@@ -1763,21 +1763,25 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Premium High-Contrast Button Styling */
 .btn-primary {
-  background: var(--primary-gradient) !important;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
   color: #ffffff !important;
-  box-shadow: 0 4px 14px var(--primary-glow) !important;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
 }
 .btn-primary:hover {
-  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.28) !important;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+  box-shadow: 0 6px 22px rgba(37, 99, 235, 0.45) !important;
 }
 
 .dark-theme .btn-primary {
-  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%) !important;
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%) !important;
   color: #ffffff !important;
-  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.25) !important;
+  box-shadow: 0 4px 18px rgba(99, 102, 241, 0.4) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
 }
 .dark-theme .btn-primary:hover {
-  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35) !important;
+  background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%) !important;
+  box-shadow: 0 6px 26px rgba(99, 102, 241, 0.6) !important;
 }
 
 .btn-secondary {
@@ -1787,57 +1791,69 @@ h1, h2, h3, h4, h5, h6 {
 }
 .btn-secondary:hover {
   background: rgba(120, 120, 120, 0.12) !important;
-  border-color: var(--text-secondary) !important;
+  border-color: var(--primary) !important;
+  color: var(--primary) !important;
 }
 
 .dark-theme .btn-secondary {
   background: rgba(255, 255, 255, 0.04) !important;
-  border: 1px solid var(--border-color) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
   color: #f8fafc !important;
 }
 .dark-theme .btn-secondary:hover {
   background: rgba(255, 255, 255, 0.08) !important;
-  border-color: #94a3b8 !important;
+  border-color: var(--primary) !important;
+  color: var(--primary) !important;
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.15) !important;
 }
 
 .btn-danger {
-  background: #dc2626 !important;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
   color: #ffffff !important;
-  box-shadow: 0 4px 14px var(--danger-glow) !important;
+  box-shadow: 0 4px 14px rgba(220, 38, 38, 0.3) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
 }
 .btn-danger:hover {
-  box-shadow: 0 6px 20px rgba(220, 38, 38, 0.3) !important;
+  background: linear-gradient(135deg, #f87171 0%, #ef4444 100%) !important;
+  box-shadow: 0 6px 22px rgba(220, 38, 38, 0.45) !important;
 }
 
 .dark-theme .btn-danger {
-  background: #b91c1c !important;
+  background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%) !important;
   color: #ffffff !important;
-  box-shadow: 0 4px 14px rgba(220, 38, 38, 0.25) !important;
+  box-shadow: 0 4px 16px rgba(239, 68, 68, 0.35) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
 }
 .dark-theme .btn-danger:hover {
-  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.35) !important;
+  background: linear-gradient(135deg, #f87171 0%, #ef4444 100%) !important;
+  box-shadow: 0 6px 22px rgba(239, 68, 68, 0.5) !important;
 }
 
 .action-btn {
-  background-color: var(--primary);
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
   color: #ffffff !important;
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
   padding: 10px 16px;
   border-radius: var(--border-radius-md);
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 4px 12px var(--primary-glow);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35) !important;
   transition: all var(--transition-normal);
 }
 .action-btn:hover {
-  opacity: 0.95;
-  transform: translateY(-1px);
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.45) !important;
 }
 
 .dark-theme .action-btn {
-  background-color: #4f46e5;
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%) !important;
   color: #ffffff !important;
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+.dark-theme .action-btn:hover {
+  background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%) !important;
+  box-shadow: 0 6px 22px rgba(99, 102, 241, 0.5) !important;
 }
 
 .btn-disabled {
