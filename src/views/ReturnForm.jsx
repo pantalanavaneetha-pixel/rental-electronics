@@ -178,6 +178,7 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
   const [cameraError, setCameraError] = useState('');
   const [photoEvidenceUrls, setPhotoEvidenceUrls] = useState([]);
   const [customUrlInput, setCustomUrlInput] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // ─── Emergency Triage State ───────────────────────────────────────────────
   // Tracks whether the current damage selection triggers an urgent safety flag
@@ -464,10 +465,12 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
   const handleFormSubmit = (e) => {
     e.preventDefault();
 
-    // Mandatory Photo Evidence Validation for transparency
+    // Ensure users cannot submit a damage report without uploading at least one evidence image link or typing a brief description
     const hasPhotoEvidence = photoEvidenceUrls.length > 0 && photoEvidenceUrls.some(url => url.trim().startsWith('http') || url.trim().startsWith('data:image'));
-    if (form.damageType !== 'None' && !hasPhotoEvidence) {
-      alert("Transparency Error: A valid Photo Evidence Link or Capture is strictly mandatory whenever damage is assessed!");
+    const hasBriefDescription = customDamageDesc.trim() !== '';
+
+    if (form.damageType !== 'None' && !hasPhotoEvidence && !hasBriefDescription) {
+      alert("Validation Error: A damage report requires uploading at least one photo evidence link or typing a brief description.");
       return;
     }
 
@@ -503,6 +506,8 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
           : `${finalDamageType} + Late Fee (${daysOverdue} Days)`)
       : finalDamageType;
 
+    setIsSubmitting(true);
+
     fetch(`http://localhost:5000/api/claims/${form.rentalId.trim()}/process`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -514,7 +519,10 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
         triageFlag: flaggedForUrgentTriage,
         // Alias kept for backward-compat with existing backend field name
         flaggedForUrgentTriage: flaggedForUrgentTriage,
-        photoEvidenceUrl: photoEvidenceUrls.join(',')
+        photoEvidenceUrl: photoEvidenceUrls.join(','),
+        // Add description and notes for backend validation
+        description: customDamageDesc.trim(),
+        notes: customDamageDesc.trim()
       })
     })
     .then(async res => {
@@ -525,6 +533,7 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
       return payload;
     })
     .then(payload => {
+      setIsSubmitting(false);
       // Clear param ID from search path
       const url = new URL(window.location.href);
       url.searchParams.delete('id');
@@ -550,11 +559,14 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
         isTriaged: flaggedForUrgentTriage
       });
 
-      // Reset triage flag and photos after successful submission
+      // Reset triage flag, photos and description after successful submission
       setFlaggedForUrgentTriage(false);
       setPhotoEvidenceUrls([]);
+      setCustomDamageDesc('');
+      setCustomDamageCost('');
     })
     .catch(err => {
+      setIsSubmitting(false);
       console.error(err);
       alert(`Failed to process claim: ${err.message}`);
     });
@@ -583,8 +595,11 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
   const matchedActiveRecord = records.find(r => r.rentalId.trim().toLowerCase() === form.rentalId.trim().toLowerCase());
   const isSubmitDisabled = !matchedActiveRecord || 
                            matchedActiveRecord.settlementStatus !== 'Held' ||
-                           (form.damageType !== 'None' && aiState.status === 'mismatch') ||
-                           aiState.status === 'analyzing';
+                           isSubmitting ||
+                           (form.damageType !== 'None' && (
+                             (photoEvidenceUrls.length === 0 && customDamageDesc.trim() === '') ||
+                             (photoEvidenceUrls.length > 0 && (aiState.status === 'mismatch' || aiState.status === 'analyzing'))
+                           ));
 
   // Convert internal security deposit to active display currency for the input field
   const displayDepositValue = Math.round(fromBase(form.securityDepositHeld, currency));
@@ -714,6 +729,7 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
             <label style={{ display: 'block', fontWeight: '600', marginBottom: '6px', color: 'var(--text-secondary)' }}>Booking Reference ID:</label>
             <input 
               required 
+              disabled={isSubmitting}
               type="text" 
               className="form-control"
               style={{ width: '100%', textTransform: 'uppercase' }} 
@@ -728,6 +744,7 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
             <label style={{ display: 'block', fontWeight: '600', marginBottom: '6px', color: 'var(--text-secondary)' }}>Customer Full Name:</label>
             <input 
               required 
+              disabled={isSubmitting}
               type="text" 
               className="form-control"
               style={{ width: '100%' }} 
@@ -741,6 +758,7 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
             <label style={{ display: 'block', fontWeight: '600', marginBottom: '6px', color: 'var(--text-secondary)' }}>Device Model Category:</label>
             <input 
               required 
+              disabled={isSubmitting}
               type="text" 
               placeholder="e.g. iPad Pro M4" 
               className="form-control"
@@ -756,6 +774,7 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
             </label>
             <input 
               required 
+              disabled={isSubmitting}
               type="number" 
               min="0"
               onKeyDown={blockInvalidChar}
@@ -772,6 +791,7 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
             </label>
             <input 
               required 
+              disabled={isSubmitting}
               type="number" 
               min="0"
               step="1"
@@ -816,8 +836,9 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
                   <button
                     key={opt.type}
                     type="button"
+                    disabled={isSubmitting}
                     className={`damage-card ${isSelected ? 'selected' : ''}`}
-                    onClick={() => handleDamage(opt.type)}
+                    onClick={() => !isSubmitting && handleDamage(opt.type)}
                     style={{
                       background: isSelected
                         ? (isWaterDamage ? 'rgba(239,68,68,0.10)' : 'var(--primary-glow)')
@@ -831,9 +852,10 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
                       flexDirection: 'column',
                       alignItems: 'center',
                       gap: '4px',
-                      cursor: 'pointer',
+                      cursor: isSubmitting ? 'not-allowed' : 'pointer',
                       transition: 'all var(--transition-fast)',
                       textAlign: 'center',
+                      opacity: isSubmitting ? 0.7 : 1,
                       boxShadow: isSelected && isWaterDamage
                         ? '0 0 12px rgba(239,68,68,0.25)'
                         : 'none'
@@ -912,34 +934,54 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
             </div>
           </div>
 
-          {form.damageType === 'Custom' && (
-            <>
-              <div style={{ marginBottom: '16px' }} className="form-group">
-                <label style={{ display: 'block', fontWeight: '600', marginBottom: '6px', color: 'var(--text-secondary)' }}>Custom Damage Description:</label>
-                <input 
-                  required
-                  type="text" 
-                  className="form-control" 
-                  placeholder="e.g. Scratched Camera Lens" 
-                  value={customDamageDesc} 
-                  onChange={e => setCustomDamageDesc(e.target.value)} 
-                />
-              </div>
+          {form.damageType !== 'None' && (
+            <div style={{ marginBottom: '16px' }} className="form-group">
+              <label style={{ display: 'block', fontWeight: '600', marginBottom: '6px', color: 'var(--text-secondary)' }}>
+                {form.damageType === 'Custom' 
+                  ? 'Custom Damage Description (Required):' 
+                  : `Damage Description / Notes ${photoEvidenceUrls.length === 0 ? '(Required - No Photo Uploaded)' : '(Optional)'}:`}
+              </label>
+              <input 
+                required={form.damageType === 'Custom' || photoEvidenceUrls.length === 0}
+                disabled={isSubmitting}
+                type="text" 
+                className={`form-control ${
+                  form.damageType !== 'None' && 
+                  (form.damageType === 'Custom' || photoEvidenceUrls.length === 0) && 
+                  customDamageDesc.trim() === '' 
+                    ? 'input-error-state' 
+                    : ''
+                }`}
+                placeholder={form.damageType === 'Custom' ? "e.g. Scratched Camera Lens" : "Describe the damage details here..."} 
+                value={customDamageDesc} 
+                onChange={e => setCustomDamageDesc(e.target.value)} 
+              />
+              {form.damageType !== 'None' && 
+               (form.damageType === 'Custom' || photoEvidenceUrls.length === 0) && 
+               customDamageDesc.trim() === '' && (
+                <div className="validation-error-text">
+                  <WarningIcon width={14} height={14} style={{ color: '#ef4444' }} />
+                  Please provide a brief description of the damage or upload photo evidence.
+                </div>
+              )}
+            </div>
+          )}
 
-              <div style={{ marginBottom: '16px' }} className="form-group">
-                <label style={{ display: 'block', fontWeight: '600', marginBottom: '6px', color: 'var(--text-secondary)' }}>Custom Deduction Cost ({activeSymbol}):</label>
-                <input 
-                  required
-                  type="number" 
-                  min="0"
-                  onKeyDown={blockInvalidChar}
-                  className="form-control" 
-                  placeholder="5000" 
-                  value={customDamageCost} 
-                  onChange={e => handleCustomCostChange(e.target.value)} 
-                />
-              </div>
-            </>
+          {form.damageType === 'Custom' && (
+            <div style={{ marginBottom: '16px' }} className="form-group">
+              <label style={{ display: 'block', fontWeight: '600', marginBottom: '6px', color: 'var(--text-secondary)' }}>Custom Deduction Cost ({activeSymbol}):</label>
+              <input 
+                required
+                disabled={isSubmitting}
+                type="number" 
+                min="0"
+                onKeyDown={blockInvalidChar}
+                className="form-control" 
+                placeholder="5000" 
+                value={customDamageCost} 
+                onChange={e => handleCustomCostChange(e.target.value)} 
+              />
+            </div>
           )}
 
           {/* Photo Evidence Tabbed Interface (Camera Capture / Drag & Drop Upload / Paste URL) */}
@@ -951,7 +993,7 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
 
               {/* Tab Selector */}
               <div style={{ display: 'flex', gap: '4px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
-                {[
+                 {[
                   { id: 'camera', label: 'Take Photo', icon: <CameraIcon style={{ marginRight: '6px' }} /> },
                   { id: 'upload', label: 'Upload File', icon: <UploadIcon style={{ marginRight: '6px' }} /> },
                   { id: 'url', label: 'Image URL', icon: <LinkIcon style={{ marginRight: '6px' }} /> }
@@ -959,7 +1001,8 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
                   <button
                     key={tab.id}
                     type="button"
-                    className={`btn ${photoMode === tab.id ? 'btn-primary' : 'btn-secondary'}`}
+                    disabled={isSubmitting}
+                    className={`btn ${photoMode === tab.id ? 'btn-primary' : 'btn-secondary'} ${isSubmitting ? 'btn-disabled' : ''}`}
                     style={{
                       padding: '6px 12px',
                       fontSize: '0.8rem',
@@ -969,11 +1012,14 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
                       color: photoMode === tab.id ? '#fff' : 'var(--text-secondary)',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center'
+                      justifyContent: 'center',
+                      cursor: isSubmitting ? 'not-allowed' : 'pointer'
                     }}
                     onClick={() => {
-                      setPhotoMode(tab.id);
-                      stopCamera();
+                      if (!isSubmitting) {
+                        setPhotoMode(tab.id);
+                        stopCamera();
+                      }
                     }}
                   >
                     {tab.icon}
@@ -1027,7 +1073,8 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
                         </p>
                         <button 
                           type="button" 
-                          className={`btn btn-primary ${isCameraLoading ? 'btn-disabled' : ''}`}
+                          disabled={isCameraLoading || isSubmitting}
+                          className={`btn btn-primary ${isCameraLoading || isSubmitting ? 'btn-disabled' : ''}`}
                           onClick={startCamera}
                           style={{ padding: '10px 20px', fontSize: '0.9rem', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
                         >
@@ -1051,14 +1098,17 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
                     padding: '32px 16px', 
                     borderRadius: '6px', 
                     border: '2px dashed var(--border-color)',
-                    cursor: 'pointer',
-                    transition: 'border-color var(--transition-fast)'
+                    cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                    transition: 'border-color var(--transition-fast)',
+                    pointerEvents: isSubmitting ? 'none' : 'auto',
+                    opacity: isSubmitting ? 0.7 : 1
                   }}
                 >
                   <input 
                     type="file" 
                     id="file-upload-input" 
                     accept="image/*" 
+                    disabled={isSubmitting}
                     onChange={handleFileUpload} 
                     style={{ display: 'none' }} 
                   />
@@ -1083,6 +1133,7 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
                   <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
                     <input 
                       type="url" 
+                      disabled={isSubmitting}
                       placeholder="https://images.unsplash.com/... or paste image URL" 
                       className="form-control"
                       style={{ width: '100%', borderColor: 'var(--border-color)' }} 
@@ -1091,7 +1142,8 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
                     />
                     <button
                       type="button"
-                      className="btn btn-primary"
+                      disabled={isSubmitting}
+                      className={`btn btn-primary ${isSubmitting ? 'btn-disabled' : ''}`}
                       style={{ fontSize: '0.8rem', whiteSpace: 'nowrap', padding: '0 12px' }}
                       onClick={() => {
                         if (customUrlInput.trim()) {
@@ -1104,7 +1156,8 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
                     </button>
                     <button
                       type="button"
-                      className="btn btn-secondary"
+                      disabled={isSubmitting}
+                      className={`btn btn-secondary ${isSubmitting ? 'btn-disabled' : ''}`}
                       style={{ fontSize: '0.8rem', whiteSpace: 'nowrap', padding: '0 12px', display: 'flex', alignItems: 'center', gap: '4px' }}
                       onClick={() => {
                         let sampleUrl = 'https://images.unsplash.com/photo-1595206133361-b1fe343e5e23?q=80&w=600'; // Cracked screen
@@ -1492,9 +1545,9 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
               <ul style={{ listStyle: 'none', paddingLeft: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '6px' }} className="validation-helper-list">
                 {[
                   { key: 'booking', label: 'Enter a valid active Booking Reference ID', met: !!matchedActiveRecord && matchedActiveRecord.settlementStatus === 'Held' },
-                  { key: 'photo', label: 'Upload or capture photo evidence for assessed damage', met: form.damageType === 'None' || (photoEvidenceUrls.length > 0 && photoEvidenceUrls.some(url => url.trim().startsWith('http') || url.trim().startsWith('data:image'))) },
-                  { key: 'aiScan', label: 'AI Core integrity analysis must be completed', met: aiState.status !== 'analyzing' },
-                  { key: 'aiMatch', label: 'AI Damage verification must confirm visual evidence matching category', met: form.damageType === 'None' || aiState.status === 'success' }
+                  { key: 'evidence', label: 'Provide photo evidence OR type a written description', met: form.damageType === 'None' || photoEvidenceUrls.length > 0 || customDamageDesc.trim() !== '' },
+                  { key: 'aiScan', label: 'AI Core integrity analysis must be completed (if photo uploaded)', met: form.damageType === 'None' || photoEvidenceUrls.length === 0 || aiState.status !== 'analyzing' },
+                  { key: 'aiMatch', label: 'AI Damage verification must confirm visual evidence (if photo uploaded)', met: form.damageType === 'None' || photoEvidenceUrls.length === 0 || aiState.status === 'success' }
                 ].map(req => (
                   <li key={req.key} style={{ display: 'flex', alignItems: 'center', gap: '6px', color: req.met ? 'var(--success)' : 'var(--danger)' }}>
                     {req.met ? (
@@ -1534,10 +1587,23 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
               } : {}))
             }}
           >
-            {isSubmitDisabled ? (
+            {isSubmitting ? (
+              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                <span className="spinner-loader" style={{
+                  width: '18px',
+                  height: '18px',
+                  border: '2px solid rgba(255,255,255,0.3)',
+                  borderTop: '2px solid #fff',
+                  borderRadius: '50%',
+                  animation: 'spin 0.8s linear infinite'
+                }}></span>
+                Processing Return...
+              </span>
+            ) : isSubmitDisabled ? (
               <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                 <BlockIcon /> {
                   !matchedActiveRecord ? "Enter Valid Active Booking Reference ID" :
+                  form.damageType !== 'None' && photoEvidenceUrls.length === 0 && customDamageDesc.trim() === '' ? "Describe Damage or Upload Photo" :
                   aiState.status === 'analyzing' ? "AI Analysis Scanning..." :
                   "AI Verification Mismatch: Resolve Evidence"
                 }

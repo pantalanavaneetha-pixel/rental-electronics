@@ -62,8 +62,27 @@ export const claimSchema = Joi.object({
   customerEmail: Joi.string().trim().pattern(/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/).optional(),
   customer_email: Joi.string().trim().pattern(/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/).optional(),
   securityDepositHeld: Joi.number().min(0).optional(),
-  security_deposit_held: Joi.number().min(0).optional()
-});
+  security_deposit_held: Joi.number().min(0).optional(),
+  description: Joi.string().trim().allow('').optional(),
+  notes: Joi.string().trim().allow('').optional()
+}).custom((value, helpers) => {
+  // Check if there is physical damage (excluding late return penalty and perfect/none status)
+  const hasPhysicalDamage = value.damages && value.damages.some(d => {
+    const typeLower = (d.type || '').toLowerCase();
+    return !typeLower.includes('late return penalty') && !typeLower.includes('none');
+  });
+
+  if (hasPhysicalDamage) {
+    const photoUrl = value.photoEvidenceUrl || value.photoEvidenceUrls || '';
+    const desc = value.description || value.notes || '';
+    
+    // A damage report requires at least one photo evidence link or a brief description
+    if (!photoUrl.trim() && !desc.trim()) {
+      return helpers.message('A damage report requires at least one photo evidence link or a brief description.');
+    }
+  }
+  return value;
+}, 'Damage Validation');
 
 // Settlement Input Schema
 export const settlementSchema = Joi.object({

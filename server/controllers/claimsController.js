@@ -44,6 +44,23 @@ export const processClaim = async (req, res, next) => {
 
   const { damages, triageFlag, flaggedForUrgentTriage } = req.body;
 
+  // Double-guard: check if physical damage is assessed but no photos/description provided
+  const hasPhysicalDamage = damages && damages.some(d => {
+    const typeLower = (d.type || '').toLowerCase();
+    return !typeLower.includes('late return penalty') && !typeLower.includes('none');
+  });
+
+  if (hasPhysicalDamage) {
+    const photoUrl = req.body.photoEvidenceUrl || req.body.photoEvidenceUrls || '';
+    const desc = req.body.description || req.body.notes || '';
+    if (!photoUrl.trim() && !desc.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Validation failed: A damage report requires at least one photo evidence link or a brief description.'
+      });
+    }
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -73,8 +90,16 @@ export const processClaim = async (req, res, next) => {
       ? totalDeductionsWithLateFee - depositAmount : 0;
 
     // 3. Compile damage descriptions
+    const descText = (req.body.description || req.body.notes || '').trim();
     const damageDescription = (damages && damages.length > 0)
-      ? damages.map(d => `${d.type} (Severity: ${d.multiplier || 1.0}x)`).join(', ')
+      ? damages.map(d => {
+          const typeLower = (d.type || '').toLowerCase();
+          const isCustomDesc = !['cracked screen', 'body dents', 'water damage / fluid intrusion', 'none'].includes(typeLower) && !typeLower.includes('late return penalty');
+          if (descText && !isCustomDesc && !typeLower.includes('late return penalty')) {
+            return `${d.type} (${descText}) (Severity: ${d.multiplier || 1.0}x)`;
+          }
+          return `${d.type} (Severity: ${d.multiplier || 1.0}x)`;
+        }).join(', ')
       : 'Standard Check-in Inspection - Wear & Tear';
 
     const maxMultiplier = (damages && damages.length > 0)
