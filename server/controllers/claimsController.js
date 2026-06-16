@@ -4,6 +4,8 @@
 import pool from '../config/db.js';
 import { calculateSettlement, calculateLateFee } from '../utils/claimProcessor.js';
 import { AppError } from '../middlewares/errorHandler.js';
+import { generateAiNotes } from '../utils/aiNotesGenerator.js';
+import { sendEmail, sendWhatsApp } from '../utils/notifier.js';
 
 /**
  * Evaluates, captures and settles a damage claim contract.
@@ -141,6 +143,21 @@ export const processClaim = async (req, res, next) => {
       [nextDeviceStatus, rental.device_id]
     );
 
+    // Query User / Customer details for notifier
+    const userRes = await client.query('SELECT * FROM users WHERE id = $1', [rental.user_id]);
+    const userObj = userRes.rows[0] || {};
+
+    // Generate AI explanation and customer-friendly settlement notes
+    const physicalDamageDeduction = Math.max(0, totalDeductionsWithLateFee - lateFee.lateFeeCharged);
+    const damageTypeParam = hasDamages ? damageDescription : 'None';
+    const { explanation: aiExplanation, customerNotes: aiCustomerFriendlyNotes } = generateAiNotes(
+      damageTypeParam,
+      physicalDamageDeduction,
+      lateFee.daysOverdue,
+      lateFee.lateFeeCharged,
+      depositAmount
+    );
+
     // 7. Insert the claims ledger record
     const triageAuditNote = isIsolatedRepair
       ? `[EMERGENCY TRIAGE] Water/fluid damage detected. Device immediately routed to ISOLATED_REPAIR queue at ${new Date().toISOString()}. Battery isolation required before handling.`
@@ -151,8 +168,9 @@ export const processClaim = async (req, res, next) => {
         rental_id, damage_description, severity_multiplier,
         deduction_amount, final_refund,
         days_overdue, late_fee_charged,
-        settlement_notes, photo_evidence_urls
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+        settlement_notes, photo_evidence_urls,
+        ai_explanation, customer_friendly_notes
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
       [
         rentalId,
         damageDescription,
@@ -162,11 +180,41 @@ export const processClaim = async (req, res, next) => {
         lateFee.daysOverdue,
         lateFee.lateFeeCharged,
         triageAuditNote,
-        req.body.photoEvidenceUrl || req.body.photoEvidenceUrls || ''
+        req.body.photoEvidenceUrl || req.body.photoEvidenceUrls || '',
+        aiExplanation,
+        aiCustomerFriendlyNotes
       ]
     );
 
     await client.query('COMMIT');
+
+    // Trigger mock messaging/notifications confirmations and reminders
+    const userEmail = customerEmailToUpdate || userObj.email || 'customer@rentshield.com';
+    const userPhone = userObj.phone || '+1-555-0199';
+
+    if (hasDamages) {
+      await sendEmail({
+        to: userEmail,
+        subject: `🛡️ RentShield Return Alert - Damage Assessed [Ref: ${rentalId}]`,
+        body: `Dear ${userObj.name || 'Customer'},\n\nWe have received your returned electronic equipment (Ref: ${rentalId}). During check-in, physical damage was assessed.\n\nAI Assessed Claim Notes:\n${aiCustomerFriendlyNotes}\n\nOur administrator will finalize the settlement invoice shortly. Thank you.`
+      });
+
+      await sendWhatsApp({
+        to: userPhone,
+        message: `RentShield Alert: Return received with damage. Assessed Repair Deduction: ₹${physicalDamageDeduction.toLocaleString()}. Notes: ${aiCustomerFriendlyNotes}`
+      });
+    } else {
+      await sendEmail({
+        to: userEmail,
+        subject: `🛡️ RentShield Return Cleared [Ref: ${rentalId}]`,
+        body: `Dear ${userObj.name || 'Customer'},\n\nYour returned device has been checked in on time in perfect condition. Your security deposit of ₹${depositAmount.toLocaleString()} has been cleared for full refund.\n\nThank you for choosing RentShield!`
+      });
+
+      await sendWhatsApp({
+        to: userPhone,
+        message: `RentShield: Device returned in perfect condition on time. Full refund of ₹${depositAmount.toLocaleString()} approved.`
+      });
+    }
 
     res.status(200).json({
       success: true,
@@ -291,6 +339,8 @@ export const settleClaim = async (req, res, next) => {
         COALESCE(c.days_overdue, 0) AS "daysOverdue",
         COALESCE(c.late_fee_charged, 0) AS "lateFeeCharged",
         c.payment_method AS "paymentMethod",
+        COALESCE(c.ai_explanation, '') AS "aiExplanation",
+        COALESCE(c.customer_friendly_notes, '') AS "customerFriendlyNotes",
         c.settled_on AS "settlementAt"
       FROM rentals r
       INNER JOIN users u ON r.user_id = u.id
@@ -346,6 +396,8 @@ export const getSettlementBreakdown = async (req, res, next) => {
         COALESCE(c.late_fee_charged, 0) AS "lateFeeCharged",
         c.payment_method AS "paymentMethod",
         c.settlement_notes AS "notes",
+        COALESCE(c.ai_explanation, '') AS "aiExplanation",
+        COALESCE(c.customer_friendly_notes, '') AS "customerFriendlyNotes",
         c.settled_on AS "settlementAt"
       FROM rentals r
       INNER JOIN users u ON r.user_id = u.id
@@ -513,6 +565,8 @@ export const patchSettlement = async (req, res, next) => {
         COALESCE(c.days_overdue, 0) AS "daysOverdue",
         COALESCE(c.late_fee_charged, 0) AS "lateFeeCharged",
         c.payment_method AS "paymentMethod",
+        COALESCE(c.ai_explanation, '') AS "aiExplanation",
+        COALESCE(c.customer_friendly_notes, '') AS "customerFriendlyNotes",
         c.settled_on AS "settlementAt"
       FROM rentals r
       INNER JOIN users u ON r.user_id = u.id
@@ -525,7 +579,43 @@ export const patchSettlement = async (req, res, next) => {
       throw new AppError(404, `Updated record not found.`);
     }
 
-    res.status(200).json(updatedRes.rows[0]);
+    const record = updatedRes.rows[0];
+
+    // Trigger simulated invoice / receipt email and WhatsApp alerts upon approval
+    const userEmail = record.customerEmail || 'customer@rentshield.com';
+    const userPhone = record.customerPhone || '+1-555-0199';
+    const userName = record.customerName || 'Customer';
+    
+    const netValue = parseFloat(record.securityDepositHeld) - parseFloat(record.damageDeduction);
+    const isDeficit = netValue < 0;
+    const absRefund = Math.abs(netValue);
+
+    const invoiceSubject = isDeficit 
+      ? `🛡️ RentShield Settlement Invoice - Liability Due [Ref: ${rentalId}]` 
+      : `🛡️ RentShield Refund Receipt - Disbursed [Ref: ${rentalId}]`;
+
+    const invoiceBody = isDeficit
+      ? `Dear ${userName},\n\nYour equipment rental has been reconciled. Total charges exceeded your security deposit. \n\nOutstanding Deficit Due: ₹${absRefund.toLocaleString()}\nReconciliation Remarks: ${notes || 'Reconciliation Complete'}\nPayment Mode: ${paymentMethod}\n\nPlease settle this invoice within 7 business days. Thank you.`
+      : `Dear ${userName},\n\nYour equipment rental has been reconciled. Remaining refund has been disbursed.\n\nNet Payout Disbursed: ₹${netValue.toLocaleString()}\nReconciliation Remarks: ${notes || 'Reconciliation Complete'}\nPayment Mode: ${paymentMethod}\n\nThe funds should reflect in your account shortly. Thank you for choosing RentShield!`;
+
+    await sendEmail({
+      to: userEmail,
+      subject: invoiceSubject,
+      body: invoiceBody
+    });
+
+    await sendWhatsApp({
+      to: userPhone,
+      message: isDeficit
+        ? `RentShield Invoice: Outstanding liability of ₹${absRefund.toLocaleString()} is due under reconciliation mode ${paymentMethod}.`
+        : `RentShield Receipt: Payout refund of ₹${netValue.toLocaleString()} has been cleared via ${paymentMethod}.`
+    });
+
+    res.status(200).json({
+      ...record,
+      sentEmail: true,
+      sentWhatsApp: true
+    });
 
   } catch (err) {
     await client.query('ROLLBACK');

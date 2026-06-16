@@ -55,7 +55,9 @@ CREATE TABLE IF NOT EXISTS claims (
     photo_evidence_urls TEXT,
     settled_on TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     settled_at TIMESTAMP WITH TIME ZONE,
-    settlement_status VARCHAR(50) DEFAULT NULL
+    settlement_status VARCHAR(50) DEFAULT NULL,
+    ai_explanation TEXT,
+    customer_friendly_notes TEXT
 );
 
 -- Indexes to optimize foreign key lookups and queries

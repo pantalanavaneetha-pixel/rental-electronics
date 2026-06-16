@@ -91,7 +91,10 @@ if (useSqlite) {
         settlement_notes TEXT,
         photo_evidence_urls TEXT,
         settled_on TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        settled_at TEXT
+        settled_at TEXT,
+        settlement_status TEXT,
+        ai_explanation TEXT,
+        customer_friendly_notes TEXT
       )
     `);
 
@@ -122,6 +125,16 @@ if (useSqlite) {
 
     // Self-healing migration for settlement_status on claims table
     sqliteDb.run("ALTER TABLE claims ADD COLUMN settlement_status TEXT", (err) => {
+      // Ignore error if column is already present
+    });
+
+    // Self-healing migration for ai_explanation on claims table
+    sqliteDb.run("ALTER TABLE claims ADD COLUMN ai_explanation TEXT", (err) => {
+      // Ignore error if column is already present
+    });
+
+    // Self-healing migration for customer_friendly_notes on claims table
+    sqliteDb.run("ALTER TABLE claims ADD COLUMN customer_friendly_notes TEXT", (err) => {
       // Ignore error if column is already present
     });
 

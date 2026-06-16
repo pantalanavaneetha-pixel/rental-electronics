@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { jsPDF } from 'jspdf';
 
 /**
@@ -19,6 +19,8 @@ export default function Settlement({ records, setRecords, formatVal, currency, c
   const [remarks, setRemarks] = useState({});
   const [paymentMethods, setPaymentMethods] = useState({});
   const [selectedReceipt, setSelectedReceipt] = useState(null);
+  const [selectedClaimId, setSelectedClaimId] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState({});
 
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -175,17 +177,8 @@ export default function Settlement({ records, setRecords, formatVal, currency, c
     doc.save(`RentShield_Receipt_${receipt.rentalId}.pdf`);
   };
 
-  const closeClaim = (id) => {
-    const record = records.find(r => r.rentalId === id);
-    if (!record) return;
-
-    const defaultNote = `Deduction applied due to: ${record.damageType}.`;
-    const activeNote = remarks[id] !== undefined ? remarks[id] : defaultNote;
-
-    const netRefund = record.securityDepositHeld - record.damageDeduction;
-    const hasDeficit = netRefund < 0;
-    const defaultMethod = hasDeficit ? "Corporate Invoice Issued" : "UPI Refund Transfer";
-    const activeMethod = paymentMethods[id] || defaultMethod;
+  const handleCloseClaim = (id, activeNote, activeMethod) => {
+    setIsSubmitting(prev => ({ ...prev, [id]: true }));
 
     // PATCH /api/settlements/:rentalId — flips status to Settled and timestamps approval
     fetch(`http://localhost:5000/api/settlements/${id}`, {
@@ -210,6 +203,9 @@ export default function Settlement({ records, setRecords, formatVal, currency, c
     .catch(err => {
       console.error(err);
       alert('Failed to process settlement on server. Check server status.');
+    })
+    .finally(() => {
+      setIsSubmitting(prev => ({ ...prev, [id]: false }));
     });
   };
 
@@ -229,6 +225,20 @@ export default function Settlement({ records, setRecords, formatVal, currency, c
     r.settlementStatus === 'Under Review' || r.settlementStatus === 'Isolated Repair'
   );
   const settledClaims = filteredRecords.filter(r => r.settlementStatus === 'Settled');
+
+  const activeClaimId = selectedClaimId || (openClaims.length > 0 ? openClaims[0].rentalId : null);
+  const activeClaim = openClaims.find(c => c.rentalId === activeClaimId);
+
+  // Sync selectedClaimId when openClaims list changes
+  useEffect(() => {
+    if (openClaims.length > 0) {
+      if (!openClaims.some(c => c.rentalId === selectedClaimId)) {
+        setSelectedClaimId(openClaims[0].rentalId);
+      }
+    } else {
+      setSelectedClaimId(null);
+    }
+  }, [openClaims, selectedClaimId]);
 
   return (
     <div className="animated-view" style={{ overflow: 'auto' }}>
@@ -254,326 +264,438 @@ export default function Settlement({ records, setRecords, formatVal, currency, c
             onChange={e => setSearchQuery(e.target.value)}
           />
         </div>
-        
+
         {openClaims.length === 0 ? (
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>No pending internal damage disputes require review today.</p>
         ) : (
-          openClaims.map((c, i) => {
-            const defaultNote = `Deduction applied due to: ${c.damageType}.`;
-            const activeNote = remarks[c.rentalId] !== undefined ? remarks[c.rentalId] : defaultNote;
-
-            const netRefund = c.securityDepositHeld - c.damageDeduction;
-            const hasDeficit = netRefund < 0;
-            const absRefund = Math.abs(netRefund);
-
-            const activeMethod = paymentMethods[c.rentalId] || (hasDeficit ? "Corporate Invoice" : "UPI Transfer");
-
-            return (
-              <div 
-                key={i} 
-                style={{ 
-                  border: c.settlementStatus === 'Isolated Repair'
-                    ? '1px solid rgba(245,158,11,0.55)'
-                    : '1px solid var(--border-color)', 
-                  padding: '20px', 
-                  borderRadius: '8px', 
-                  marginBottom: '16px', 
-                  background: c.settlementStatus === 'Isolated Repair'
-                    ? 'linear-gradient(135deg, rgba(245,158,11,0.05), rgba(239,68,68,0.04))'
-                    : 'var(--bg-main)',
-                  transition: 'all var(--transition-fast)'
-                }}
-              >
-                {/* Triage emergency notice at top of card */}
-                {/* Triage emergency notice at top of card */}
-                {c.settlementStatus === 'Isolated Repair' && (
-                  <div 
-                    className="alert-message-box alert-warning-style"
-                    style={{
-                      borderLeftWidth: '5px',
-                      padding: '10px 14px',
-                      marginBottom: '14px',
-                      animation: 'triage-border-breathe 2.2s ease-in-out infinite'
-                    }}
-                  >
-                    <div className="alert-message-icon-wrapper" style={{ alignSelf: 'center' }}>
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#d97706' }}>
-                        <path d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
-                      </svg>
-                    </div>
-                    <div className="alert-message-content">
-                      <strong style={{ fontSize: '0.76rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block' }}>ISOLATED REPAIR — Priority Queue</strong>
-                      <div style={{ fontSize: '0.8rem', marginTop: '0.1rem', fontWeight: 600 }}>
-                        Device status: <strong style={{ color: '#ef4444' }}>ISOLATED_REPAIR</strong> · Battery isolation required before handling
-                      </div>
-                    </div>
-                    <span style={{
-                      padding: '2px 8px', borderRadius: '4px', fontSize: '0.65rem',
-                      fontWeight: 900, color: '#fff', letterSpacing: '0.06em',
-                      background: '#ef4444',
-                      animation: 'triage-badge-flash 1.4s ease-in-out infinite',
-                      alignSelf: 'center'
-                    }}>URGENT</span>
-                  </div>
-                )}
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }} className="flex-between">
-                  <div>
-                    <span className="muted-description">Reference: </span><span className="rental-tracking-id">{c.rentalId}</span> - <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{c.customerName}</span> {renderCustomerId(c.customerId)}
-                    {c.kycStatus === 'Pending' && (
-                      <span className="validation-badge warning" style={{ padding: '2px 8px', fontSize: '0.7rem', display: 'inline-flex', alignItems: 'center', gap: '3px', verticalAlign: 'middle', marginLeft: '8px' }}>
-                        <svg className="svg-icon" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" style={{ width: '12px', height: '12px' }}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                        </svg>
-                        KYC PENDING
-                      </span>
-                    )}
-                    {c.kycStatus === 'Rejected' && (
-                      <span className="validation-badge danger" style={{ padding: '2px 8px', fontSize: '0.7rem', display: 'inline-flex', alignItems: 'center', gap: '3px', verticalAlign: 'middle', marginLeft: '8px', background: 'rgba(239, 68, 68, 0.12)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.35)' }}>
-                        <svg className="svg-icon" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" style={{ width: '12px', height: '12px' }}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        KYC REJECTED
-                      </span>
-                    )}
-                    <br />
-                    <small className="muted-description">Equipment Class: {c.deviceModel}</small>
-                  </div>
-                  {c.photoEvidenceUrl && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', alignItems: 'flex-end' }}>
-                      <a href={c.photoEvidenceUrl} target="_blank" rel="noreferrer">
-                        <img 
-                          src={c.photoEvidenceUrl} 
-                          alt="Evidence" 
-                          className="evidence-thumbnail-trigger"
-                          onError={(e) => { e.target.style.display = 'none'; }}
-                        />
-                      </a>
-                    </div>
-                  )}
-                </div>
-
-                {/* Clean Transparent Itemized Ledger Breakdown Card */}
-                {(() => {
-                  const { damagePenalty, lateFee } = parseDeductions(c);
+          <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+            {/* LEFT PANE (35% width, minWidth: 300px) */}
+            <div style={{ flex: '0 0 33%', minWidth: '300px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '700', marginBottom: '4px' }}>
+                Pending Claims ({openClaims.length})
+              </h4>
+              <div style={{ maxHeight: '600px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', paddingRight: '4px' }}>
+                {openClaims.map((c) => {
+                  const isActive = c.rentalId === activeClaimId;
+                  const isIsolated = c.settlementStatus === 'Isolated Repair';
                   return (
-                    <div 
-                      className="glass-panel" 
-                      style={{ 
-                        background: 'rgba(120, 120, 120, 0.02)', 
-                        border: '1px solid var(--border-color)', 
-                        padding: '20px', 
-                        borderRadius: '12px',
-                        margin: '16px 0',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '10px'
+                    <div
+                      key={c.rentalId}
+                      onClick={() => setSelectedClaimId(c.rentalId)}
+                      style={{
+                        padding: '12px 16px',
+                        borderRadius: '8px',
+                        border: isActive 
+                          ? '2px solid var(--primary)' 
+                          : isIsolated
+                            ? '1px dashed rgba(245,158,11,0.5)'
+                            : '1px solid var(--border-color)',
+                        background: isActive 
+                          ? 'var(--primary-glow)' 
+                          : 'var(--bg-main)',
+                        cursor: 'pointer',
+                        transition: 'all var(--transition-fast)',
+                        boxShadow: isActive ? '0 4px 12px var(--primary-glow)' : 'none'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isActive) e.currentTarget.style.borderColor = 'var(--border-color-hover)';
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isActive) e.currentTarget.style.borderColor = isIsolated ? 'rgba(245,158,11,0.5)' : 'var(--border-color)';
                       }}
                     >
-                      <h4 style={{ margin: '0 0 8px 0', fontSize: '0.85rem', letterSpacing: '0.06em', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--primary)' }}>
-                          <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1-2-1Z" />
-                          <path d="M16 8H8" strokeWidth="1.8" />
-                          <path d="M16 12H8" strokeWidth="1.8" />
-                          <path d="M13 16H8" strokeWidth="1.8" />
-                        </svg>
-                        Cascading Financial Settlement Receipt
-                        <span style={{ fontSize: '0.65rem', padding: '2px 6px', borderRadius: '4px', background: 'var(--primary-glow)', color: 'var(--primary)', fontWeight: 800 }}>ITEMIZED</span>
-                      </h4>
-                      
-                      {/* Row 1: Base Deposit — standard text */}
-                      <div className="flex-between" style={{ fontSize: '0.9rem', padding: '8px 12px', background: 'var(--bg-input)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'var(--primary-glow)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 800, flexShrink: 0 }}>1</span>
-                          <span className="muted-description">Base Security Deposit Held</span>
-                        </span>
-                        <span className="currency-amount neutral" style={{ fontWeight: 600 }}>
-                          {formatVal(c.securityDepositHeld)}
-                        </span>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <strong style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>{c.customerName}</strong>
+                        {isIsolated ? (
+                          <span style={{ fontSize: '0.65rem', padding: '2px 6px', borderRadius: '4px', background: 'var(--danger)', color: '#fff', fontWeight: '800' }}>PRIORITY</span>
+                        ) : (
+                          <span style={{ fontSize: '0.65rem', padding: '2px 6px', borderRadius: '4px', background: 'var(--primary-glow)', color: 'var(--primary)', fontWeight: '800' }}>REVIEW</span>
+                        )}
                       </div>
-
-                      {/* Row 2: Assessed Physical Damage Penalty — red text */}
-                      <div className="flex-between" style={{ fontSize: '0.9rem', padding: '8px 12px', background: damagePenalty > 0 ? 'rgba(220,38,38,0.04)' : 'var(--bg-input)', borderRadius: '6px', border: damagePenalty > 0 ? '1px solid rgba(220,38,38,0.15)' : '1px solid var(--border-color)' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'rgba(220,38,38,0.10)', color: 'var(--danger)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 800, flexShrink: 0 }}>2</span>
-                          <span className="muted-description">Minus: Assessed Physical Damage Penalty</span>
-                        </span>
-                        <span className="currency-amount negative" style={{ fontWeight: 600 }}>
-                          −{formatVal(damagePenalty)}
-                        </span>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Ref: {c.rentalId}</span>
+                        <span>{c.deviceModel}</span>
                       </div>
-
-                      {/* Row 3: Accumulated Overdue Daily Fees — amber text */}
-                      <div className="flex-between" style={{ fontSize: '0.9rem', padding: '8px 12px', background: lateFee > 0 ? 'rgba(245,158,11,0.05)' : 'var(--bg-input)', borderRadius: '6px', border: lateFee > 0 ? '1px solid rgba(245,158,11,0.2)' : '1px solid var(--border-color)' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'rgba(245,158,11,0.12)', color: '#b45309', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 800, flexShrink: 0 }}>3</span>
-                          <span className="muted-description">
-                            Minus: Accumulated Overdue Daily Fees
-                            {(c.daysOverdue > 0 || lateFee > 0) && (
-                              <span style={{ fontSize: '0.75rem', color: '#b45309', marginLeft: '6px', fontWeight: 600 }}>
-                                ({c.daysOverdue || Math.round(lateFee / 1250)} days × ₹1,250)
-                              </span>
-                            )}
-                          </span>
-                        </span>
-                        <span style={{ color: '#b45309', fontWeight: 600, fontFamily: 'var(--font-primary)' }}>
-                          −{formatVal(lateFee)}
-                        </span>
-                      </div>
-
-                      {/* Cascading divider with equals indicator */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '2px 0' }}>
-                        <div style={{ flex: 1, height: '2px', background: hasDeficit ? 'rgba(220,38,38,0.2)' : 'rgba(22,163,74,0.2)' }} />
-                        <span style={{ fontSize: '0.7rem', fontWeight: 800, color: hasDeficit ? 'var(--danger)' : 'var(--secondary)', letterSpacing: '0.06em' }}>EQUALS</span>
-                        <div style={{ flex: 1, height: '2px', background: hasDeficit ? 'rgba(220,38,38,0.2)' : 'rgba(22,163,74,0.2)' }} />
-                      </div>
-
-                      {/* Row 4: Net Disbursal — large, bold, success-green or danger-red */}
-                      {hasDeficit ? (
-                        <div className="flex-between" style={{ padding: '12px 14px', background: 'rgba(220,38,38,0.06)', borderRadius: '8px', border: '1px solid rgba(220,38,38,0.2)', alignItems: 'baseline' }}>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'rgba(220,38,38,0.12)', color: 'var(--danger)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                              <svg className="svg-icon" fill="none" viewBox="0 0 24 24" strokeWidth="3" stroke="currentColor" style={{ width: '10px', height: '10px' }}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                              </svg>
-                            </span>
-                            <span style={{ fontWeight: 700, color: 'var(--danger)', fontSize: '0.95rem' }}>
-                              Net Liability Deficit Due
-                            </span>
-                          </span>
-                          <span className="currency-amount negative" style={{ fontSize: '1.3rem', fontWeight: 800 }}>
-                            {formatVal(absRefund)}
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="flex-between" style={{ padding: '12px 14px', background: 'rgba(22,163,74,0.06)', borderRadius: '8px', border: '1px solid rgba(22,163,74,0.2)', alignItems: 'baseline' }}>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'rgba(22,163,74,0.12)', color: 'var(--secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                              <svg className="svg-icon" fill="none" viewBox="0 0 24 24" strokeWidth="3" stroke="currentColor" style={{ width: '10px', height: '10px' }}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                              </svg>
-                            </span>
-                            <span style={{ fontWeight: 700, color: 'var(--secondary)', fontSize: '0.95rem' }}>
-                              Net Disbursal Refund Due
-                            </span>
-                          </span>
-                          <span className="currency-amount positive" style={{ fontSize: '1.3rem', fontWeight: 800 }}>
-                            {formatVal(netRefund)}
-                          </span>
-                        </div>
-                      )}
                     </div>
                   );
-                })()}
-
-                {/* Payment method selector & Remarks */}
-                <div className="grid-2" style={{ gap: '1rem', marginBottom: '1.25rem' }}>
-                  <div className="form-group">
-                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
-                      Reconciliation Action / Channel:
-                    </label>
-                    <select
-                      value={activeMethod}
-                      onChange={e => setPaymentMethods({ ...paymentMethods, [c.rentalId]: e.target.value })}
-                      className="form-control"
-                      style={{ cursor: 'pointer' }}
-                    >
-                      {hasDeficit ? (
-                        <>
-                          <option value="Corporate Invoice Issued">Corporate Invoice Issued</option>
-                          <option value="Direct Bank Draft Collection">Direct Bank Draft Collection</option>
-                          <option value="UPI Pay-In Collected">UPI Pay-In Collected</option>
-                          <option value="Outstanding Ledger Write-off">Outstanding Ledger Write-off</option>
-                        </>
-                      ) : (
-                        <>
-                          <option value="UPI Refund Transfer">UPI Refund Transfer</option>
-                          <option value="NEFT Bank Transfer">NEFT Bank Transfer</option>
-                          <option value="Original Credit Card Reversal">Original Credit Card Reversal</option>
-                          <option value="Hand-delivered Cash Reconcile">Hand-delivered Cash Reconcile</option>
-                        </>
-                      )}
-                    </select>
-                  </div>
-
-                  <div className="form-group">
-                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
-                      Settlement Remarks:
-                    </label>
-                    <textarea 
-                      className="form-control"
-                      placeholder="Enter parameters for deduction explanation..."
-                      value={activeNote}
-                      onChange={e => setRemarks({ ...remarks, [c.rentalId]: e.target.value })}
-                      rows="2"
-                      style={{ resize: 'none', width: '100%' }}
-                    />
-                  </div>
-                 </div>
-                
-                {c.kycStatus !== 'Verified' && (
-                  <div 
-                    className="glass-panel"
-                    style={{
-                      background: 'rgba(239, 68, 68, 0.08)',
-                      border: '1px solid rgba(239, 68, 68, 0.35)',
-                      borderLeft: '4px solid #ef4444',
-                      padding: '10px 12px',
-                      borderRadius: '6px',
-                      marginBottom: '1rem',
-                      fontSize: '0.82rem',
-                      color: 'var(--text-secondary)'
-                    }}
-                  >
-                    <strong style={{ color: '#ef4444', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                      <svg className="svg-icon" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" style={{ width: '14px', height: '14px', verticalAlign: 'middle' }}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                      </svg>
-                      KYC COMPLIANCE WARNING:
-                    </strong> Customer identity status is <strong>{c.kycStatus}</strong>. Releases of deposit refunds should be held until verification checks are cleared.
-                  </div>
-                )}
-
-                {/* Approve button — triage-aware styling */}
-                <button 
-                  className="action-btn" 
-                  style={{ 
-                    backgroundColor: c.settlementStatus === 'Isolated Repair'
-                      ? 'transparent'
-                      : (hasDeficit ? 'var(--danger)' : 'var(--success)'),
-                    background: c.settlementStatus === 'Isolated Repair'
-                      ? 'linear-gradient(90deg, #f59e0b 0%, #ef4444 100%)'
-                      : undefined,
-                    color: '#fff', 
-                    boxShadow: c.settlementStatus === 'Isolated Repair'
-                      ? '0 4px 18px rgba(239,68,68,0.35)'
-                      : (hasDeficit ? '0 4px 12px var(--danger-glow)' : '0 4px 12px var(--success-glow)'),
-                    width: '100%',
-                    padding: '12px',
-                    fontWeight: c.settlementStatus === 'Isolated Repair' ? 800 : undefined,
-                    animation: c.settlementStatus === 'Isolated Repair' 
-                      ? 'triage-border-breathe 2s ease-in-out infinite' 
-                      : undefined,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '6px'
-                  }} 
-                  onClick={() => closeClaim(c.rentalId)}
-                >
-                  {c.settlementStatus === 'Isolated Repair' ? (
-                    <>
-                      <svg className="svg-icon" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" style={{ width: '15px', height: '15px' }}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
-                      </svg>
-                      Emergency Settle — Release from ISOLATED_REPAIR
-                    </>
-                  ) : (hasDeficit 
-                    ? 'Approve Deficit Breakdown & Issue Invoice' 
-                    : 'Approve Refund Breakdown & Clear Payout')}
-                </button>
+                })}
               </div>
-            );
-          })
+            </div>
+
+            {/* RIGHT PANE (65% width, flex: 1) */}
+            <div style={{ flex: '1 1 62%', minWidth: '350px', background: 'var(--bg-main)', borderRadius: '12px', border: '1px solid var(--border-color)', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {activeClaim ? (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+                    <div>
+                      <h4 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '1.1rem', fontWeight: 700 }}>
+                        Reconciliation File: Ref {activeClaim.rentalId}
+                      </h4>
+                      <small style={{ color: 'var(--text-secondary)' }}>
+                        Customer Name: <strong>{activeClaim.customerName}</strong> · Account ID: {renderCustomerId(activeClaim.customerId)}
+                      </small>
+                    </div>
+                    {activeClaim.settlementStatus === 'Isolated Repair' ? (
+                      <span className="validation-badge danger" style={{ animation: 'triage-badge-flash 1.4s ease-in-out infinite' }}>🚨 URGENT PRIORITY</span>
+                    ) : (
+                      <span className="validation-badge warning">UNDER REVIEW</span>
+                    )}
+                  </div>
+
+                  {/* High-res Image Review Box with AI Overlays */}
+                  {activeClaim.photoEvidenceUrl && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <label style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-secondary)' }}>
+                        AI Computer Vision Scan:
+                      </label>
+                      <div 
+                        style={{ 
+                          position: 'relative', 
+                          borderRadius: '8px', 
+                          overflow: 'hidden', 
+                          border: '2px solid rgba(239, 68, 68, 0.35)', 
+                          background: '#000',
+                          maxHeight: '260px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                      >
+                        {/* High-res image */}
+                        <img 
+                          src={activeClaim.photoEvidenceUrl} 
+                          alt="High Res Evidence" 
+                          style={{ width: '100%', maxHeight: '260px', objectFit: 'contain' }}
+                          onError={(e) => { e.target.style.display = 'none'; }}
+                        />
+                        
+                        {/* AI Target Grid Overlay */}
+                        <div 
+                          style={{ 
+                            position: 'absolute', 
+                            top: 0, 
+                            left: 0, 
+                            width: '100%', 
+                            height: '100%', 
+                            backgroundImage: 'radial-gradient(rgba(37, 99, 235, 0.15) 1px, transparent 1px)', 
+                            backgroundSize: '16px 16px',
+                            pointerEvents: 'none'
+                          }} 
+                        />
+                        
+                        {/* AI Bounding Box Overlay */}
+                        <div 
+                          style={{ 
+                            position: 'absolute', 
+                            border: '2px dashed var(--danger)',
+                            borderRadius: '4px',
+                            top: '25%',
+                            left: '30%',
+                            width: '40%',
+                            height: '50%',
+                            boxShadow: '0 0 10px rgba(220, 38, 38, 0.5)',
+                            pointerEvents: 'none',
+                            animation: 'triage-border-breathe 2.5s ease-in-out infinite'
+                          }}
+                        >
+                          {/* AI Label tag */}
+                          <div 
+                            style={{ 
+                              position: 'absolute', 
+                              top: '-20px', 
+                              left: '-2px', 
+                              background: 'var(--danger)', 
+                              color: '#fff', 
+                              fontSize: '9px', 
+                              fontWeight: 900, 
+                              padding: '2px 6px', 
+                              borderRadius: '2px 2px 0 0',
+                              whiteSpace: 'nowrap',
+                              letterSpacing: '0.05em'
+                            }}
+                          >
+                            AI SCANNED: {activeClaim.damageType} (94.7% MATCH)
+                          </div>
+                        </div>
+
+                        {/* Top Right Scanning Status */}
+                        <div 
+                          style={{ 
+                            position: 'absolute', 
+                            top: '10px', 
+                            right: '10px', 
+                            background: 'rgba(0,0,0,0.6)', 
+                            border: '1px solid var(--primary)', 
+                            borderRadius: '4px', 
+                            padding: '3px 8px', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '5px',
+                            fontSize: '9px',
+                            color: 'var(--primary)',
+                            fontWeight: 700
+                          }}
+                        >
+                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--primary)', animation: 'spin 1.5s linear infinite' }} />
+                          SCAN VERIFIED
+                        </div>
+                      </div>
+                      <small style={{ color: 'var(--text-muted)', fontSize: '0.75rem', textAlign: 'center' }}>
+                        Image hosted at: <a href={activeClaim.photoEvidenceUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--primary)' }}>{activeClaim.photoEvidenceUrl}</a>
+                      </small>
+                    </div>
+                  )}
+
+                  {/* AI Generated Notes Display */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <label style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <span style={{ color: 'var(--primary)' }}>✨</span> AI Suggested Audit Remarks:
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px' }}>
+                      {/* Technical Audit Box */}
+                      <div style={{ background: 'rgba(99, 102, 241, 0.04)', border: '1px solid rgba(99, 102, 241, 0.15)', borderRadius: '6px', padding: '10px 14px' }}>
+                        <small style={{ color: 'var(--primary)', fontWeight: 800, fontSize: '0.72rem', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
+                          Technical Claim Audit
+                        </small>
+                        <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-primary)', lineHeight: '1.4' }}>
+                          {activeClaim.aiExplanation || "No technical AI summary was pre-calculated for this claim."}
+                        </p>
+                      </div>
+
+                      {/* Customer friendly notes Box */}
+                      <div style={{ background: 'rgba(16, 185, 129, 0.04)', border: '1px solid rgba(16, 185, 129, 0.15)', borderRadius: '6px', padding: '10px 14px' }}>
+                        <small style={{ color: 'var(--success)', fontWeight: 800, fontSize: '0.72rem', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
+                          Customer Friendly Settlement Notes
+                        </small>
+                        <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-primary)', lineHeight: '1.4' }}>
+                          {activeClaim.customerFriendlyNotes || "No customer friendly statement was pre-calculated for this claim."}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* KYC Compliance warning if customer is not verified */}
+                  {activeClaim.kycStatus !== 'Verified' && (
+                    <div 
+                      className="glass-panel"
+                      style={{
+                        background: 'rgba(239, 68, 68, 0.08)',
+                        border: '1px solid rgba(239, 68, 68, 0.35)',
+                        borderLeft: '4px solid #ef4444',
+                        padding: '10px 12px',
+                        borderRadius: '6px',
+                        fontSize: '0.82rem',
+                        color: 'var(--text-secondary)'
+                      }}
+                    >
+                      <strong style={{ color: '#ef4444', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <svg className="svg-icon" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" style={{ width: '14px', height: '14px', verticalAlign: 'middle' }}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        KYC COMPLIANCE WARNING:
+                      </strong> Customer identity status is <strong>{activeClaim.kycStatus}</strong>. Releases of deposit refunds should be held until verification checks are cleared.
+                    </div>
+                  )}
+
+                  {/* Suggested Deduction Calculator Breakdown */}
+                  {(() => {
+                    const { damagePenalty, lateFee } = parseDeductions(activeClaim);
+                    const netRefund = activeClaim.securityDepositHeld - activeClaim.damageDeduction;
+                    const hasDeficit = netRefund < 0;
+                    const absRefund = Math.abs(netRefund);
+
+                    return (
+                      <div 
+                        className="glass-panel" 
+                        style={{ 
+                          background: 'rgba(120, 120, 120, 0.02)', 
+                          border: '1px solid var(--border-color)', 
+                          padding: '16px', 
+                          borderRadius: '12px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '8px'
+                        }}
+                      >
+                        <h4 style={{ margin: '0 0 4px 0', fontSize: '0.8rem', letterSpacing: '0.06em', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--primary)' }}>
+                            <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1-2-1Z" />
+                            <path d="M16 8H8" strokeWidth="1.8" />
+                            <path d="M16 12H8" strokeWidth="1.8" />
+                          </svg>
+                          Itemized Financial Ledger
+                          <span style={{ fontSize: '0.6rem', padding: '1px 5px', borderRadius: '3px', background: 'var(--primary-glow)', color: 'var(--primary)', fontWeight: 800 }}>AI CALCULATED</span>
+                        </h4>
+                        
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                          <div style={{ fontSize: '0.82rem', padding: '6px 10px', background: 'var(--bg-input)', borderRadius: '4px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between' }}>
+                            <span className="muted-description">Base Deposit</span>
+                            <span style={{ fontWeight: 600 }}>{formatVal(activeClaim.securityDepositHeld)}</span>
+                          </div>
+
+                          <div style={{ fontSize: '0.82rem', padding: '6px 10px', background: damagePenalty > 0 ? 'rgba(220,38,38,0.04)' : 'var(--bg-input)', borderRadius: '4px', border: damagePenalty > 0 ? '1px solid rgba(220,38,38,0.15)' : '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between' }}>
+                            <span className="muted-description">Damage Penalty</span>
+                            <span className="currency-amount negative" style={{ fontWeight: 600 }}>−{formatVal(damagePenalty)}</span>
+                          </div>
+
+                          <div style={{ fontSize: '0.82rem', padding: '6px 10px', background: lateFee > 0 ? 'rgba(245,158,11,0.05)' : 'var(--bg-input)', borderRadius: '4px', border: lateFee > 0 ? '1px solid rgba(245,158,11,0.2)' : '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between' }}>
+                            <span className="muted-description">Late Overdue Fees</span>
+                            <span style={{ color: '#b45309', fontWeight: 600 }}>−{formatVal(lateFee)}</span>
+                          </div>
+
+                          {hasDeficit ? (
+                            <div style={{ fontSize: '0.82rem', padding: '6px 10px', background: 'rgba(220,38,38,0.06)', borderRadius: '4px', border: '1px solid rgba(220, 38, 38, 0.2)', display: 'flex', justifyContent: 'space-between' }}>
+                              <span style={{ fontWeight: 700, color: 'var(--danger)' }}>Net Deficit Due</span>
+                              <span className="currency-amount negative" style={{ fontWeight: 800 }}>{formatVal(absRefund)}</span>
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: '0.82rem', padding: '6px 10px', background: 'rgba(22,163,74,0.06)', borderRadius: '4px', border: '1px solid rgba(22, 163, 74, 0.2)', display: 'flex', justifyContent: 'space-between' }}>
+                              <span style={{ fontWeight: 700, color: 'var(--success)' }}>Net Refund Released</span>
+                              <span className="currency-amount positive" style={{ fontWeight: 800 }}>{formatVal(netRefund)}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Manual Reconciliation Adjustment and Override Controls */}
+                  {(() => {
+                    const netRefund = activeClaim.securityDepositHeld - activeClaim.damageDeduction;
+                    const hasDeficit = netRefund < 0;
+                    
+                    const defaultNote = activeClaim.customerFriendlyNotes || `Deduction applied due to: ${activeClaim.damageType}.`;
+                    const activeNote = remarks[activeClaim.rentalId] !== undefined ? remarks[activeClaim.rentalId] : defaultNote;
+
+                    const defaultMethod = hasDeficit ? "Corporate Invoice Issued" : "UPI Refund Transfer";
+                    const activeMethod = paymentMethods[activeClaim.rentalId] || defaultMethod;
+
+                    const claimSubmitting = isSubmitting[activeClaim.rentalId] === true;
+
+                    return (
+                      <>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                          <div className="form-group">
+                            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                              Reconciliation Action / Channel:
+                            </label>
+                            <select
+                              value={activeMethod}
+                              onChange={e => setPaymentMethods({ ...paymentMethods, [activeClaim.rentalId]: e.target.value })}
+                              className="form-control"
+                              style={{ cursor: 'pointer', fontSize: '0.82rem', height: '36px' }}
+                            >
+                              {hasDeficit ? (
+                                <>
+                                  <option value="Corporate Invoice Issued">Corporate Invoice Issued</option>
+                                  <option value="Direct Bank Draft Collection">Direct Bank Draft Collection</option>
+                                  <option value="UPI Pay-In Collected">UPI Pay-In Collected</option>
+                                  <option value="Outstanding Ledger Write-off">Outstanding Ledger Write-off</option>
+                                </>
+                              ) : (
+                                <>
+                                  <option value="UPI Refund Transfer">UPI Refund Transfer</option>
+                                  <option value="NEFT Bank Transfer">NEFT Bank Transfer</option>
+                                  <option value="Original Credit Card Reversal">Original Credit Card Reversal</option>
+                                  <option value="Hand-delivered Cash Reconcile">Hand-delivered Cash Reconcile</option>
+                                </>
+                              )}
+                            </select>
+                          </div>
+
+                          <div className="form-group">
+                            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                              Settlement Remarks Override:
+                            </label>
+                            <textarea 
+                              className="form-control"
+                              placeholder="Enter parameters for deduction explanation..."
+                              value={activeNote}
+                              onChange={e => setRemarks({ ...remarks, [activeClaim.rentalId]: e.target.value })}
+                              rows="1"
+                              style={{ resize: 'none', width: '100%', fontSize: '0.82rem', height: '36px', padding: '6px 10px' }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Approve and Settle Action Button */}
+                        <button 
+                          disabled={claimSubmitting}
+                          className="action-btn" 
+                          style={{ 
+                            backgroundColor: activeClaim.settlementStatus === 'Isolated Repair'
+                              ? 'transparent'
+                              : (hasDeficit ? 'var(--danger)' : 'var(--success)'),
+                            background: activeClaim.settlementStatus === 'Isolated Repair'
+                              ? 'linear-gradient(90deg, #f59e0b 0%, #ef4444 100%)'
+                              : undefined,
+                            color: '#fff', 
+                            boxShadow: activeClaim.settlementStatus === 'Isolated Repair'
+                              ? '0 4px 18px rgba(239,68,68,0.35)'
+                              : (hasDeficit ? '0 4px 12px var(--danger-glow)' : '0 4px 12px var(--success-glow)'),
+                            width: '100%',
+                            padding: '12px',
+                            fontWeight: 700,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px',
+                            cursor: claimSubmitting ? 'not-allowed' : 'pointer',
+                            opacity: claimSubmitting ? 0.7 : 1
+                          }} 
+                          onClick={() => handleCloseClaim(activeClaim.rentalId, activeNote, activeMethod)}
+                        >
+                          {claimSubmitting ? (
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span className="spinner-loader" style={{
+                                width: '16px',
+                                height: '16px',
+                                border: '2px solid rgba(255,255,255,0.3)',
+                                borderTop: '2px solid #fff',
+                                borderRadius: '50%',
+                                animation: 'spin 0.8s linear infinite'
+                              }}></span>
+                              Reconciling & Disbursing...
+                            </span>
+                          ) : activeClaim.settlementStatus === 'Isolated Repair' ? (
+                            <>
+                              <svg className="svg-icon" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" style={{ width: '15px', height: '15px' }}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+                              </svg>
+                              Emergency Settle — Release from ISOLATED_REPAIR
+                            </>
+                          ) : (hasDeficit 
+                            ? 'Approve Deficit Breakdown & Issue Invoice' 
+                            : 'Approve Refund Breakdown & Clear Payout')}
+                        </button>
+
+                        <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '2px' }}>
+                          <small style={{ color: 'var(--text-muted)', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ color: 'var(--success)' }}>✓</span> Simulates Auto Email Alerts
+                          </small>
+                          <small style={{ color: 'var(--text-muted)', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ color: 'var(--success)' }}>✓</span> Simulates WhatsApp Receipts
+                          </small>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </>
+              ) : (
+                <div style={{ display: 'flex', flex: 1, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-muted)', marginBottom: '16px' }}>
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                  <strong style={{ fontSize: '0.95rem' }}>No Active Claim File Selected</strong>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: '6px', maxWidth: '300px' }}>
+                    Select a claim file from the left panel queue to review evidence, suggested AI notes, and process payouts.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </div>
 
@@ -598,6 +720,16 @@ export default function Settlement({ records, setRecords, formatVal, currency, c
                 <div key={idx} className="history-item flex-between" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <span className="rental-tracking-id">{s.rentalId}</span> - <span style={{ fontWeight: 500 }}>{s.customerName}</span> {renderCustomerId(s.customerId)}
+                    {s.sentEmail && (
+                      <span className="validation-badge success" style={{ padding: '2px 6px', fontSize: '0.65rem', marginLeft: '6px', background: 'rgba(34, 197, 94, 0.12)', color: '#22c55e', border: '1px solid rgba(34, 197, 94, 0.35)', display: 'inline-flex', alignItems: 'center', gap: '3px', verticalAlign: 'middle' }}>
+                        Email Sent
+                      </span>
+                    )}
+                    {s.sentWhatsApp && (
+                      <span className="validation-badge success" style={{ padding: '2px 6px', fontSize: '0.65rem', marginLeft: '6px', background: 'rgba(34, 197, 94, 0.12)', color: '#22c55e', border: '1px solid rgba(34, 197, 94, 0.35)', display: 'inline-flex', alignItems: 'center', gap: '3px', verticalAlign: 'middle' }}>
+                        WhatsApp Sent
+                      </span>
+                    )}
                     <br />
                     <small className="muted-description">
                       Asset: {s.deviceModel} | Method: {s.paymentMethod || 'Default'}

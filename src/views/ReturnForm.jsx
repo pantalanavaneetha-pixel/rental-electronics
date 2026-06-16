@@ -177,6 +177,7 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
   const [isCameraLoading, setIsCameraLoading] = useState(false);
   const [cameraError, setCameraError] = useState('');
   const [photoEvidenceUrls, setPhotoEvidenceUrls] = useState([]);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [customUrlInput, setCustomUrlInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -294,6 +295,31 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
     }
   };
 
+  const uploadPhotoToServer = async (base64Data) => {
+    setIsUploadingPhoto(true);
+    try {
+      const response = await fetch('http://localhost:5000/api/upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ image: base64Data })
+      });
+      const data = await response.json();
+      if (data.success && data.url) {
+        setPhotoEvidenceUrls(prev => [...prev, data.url]);
+        return data.url;
+      } else {
+        alert("Upload failed: " + (data.error || "Unknown error"));
+      }
+    } catch (err) {
+      console.error("Upload error:", err);
+      alert("Failed to upload photo to server. Make sure the backend server is running.");
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
+
   const capturePhoto = () => {
     const videoEl = document.getElementById('webcam-video');
     if (videoEl && videoStream) {
@@ -304,7 +330,7 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
       ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
       const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
       
-      setPhotoEvidenceUrls(prev => [...prev, dataUrl]);
+      uploadPhotoToServer(dataUrl);
       
       videoStream.getTracks().forEach(track => track.stop());
       setVideoStream(null);
@@ -324,7 +350,7 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
       if (file.type.startsWith('image/')) {
         const reader = new FileReader();
         reader.onload = (event) => {
-          setPhotoEvidenceUrls(prev => [...prev, event.target.result]);
+          uploadPhotoToServer(event.target.result);
         };
         reader.readAsDataURL(file);
       } else {
@@ -344,7 +370,7 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
       if (file.type.startsWith('image/')) {
         const reader = new FileReader();
         reader.onload = (event) => {
-          setPhotoEvidenceUrls(prev => [...prev, event.target.result]);
+          uploadPhotoToServer(event.target.result);
         };
         reader.readAsDataURL(file);
       } else {
@@ -596,6 +622,7 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
   const isSubmitDisabled = !matchedActiveRecord || 
                            matchedActiveRecord.settlementStatus !== 'Held' ||
                            isSubmitting ||
+                           isUploadingPhoto ||
                            (form.damageType !== 'None' && (
                              (photoEvidenceUrls.length === 0 && customDamageDesc.trim() === '') ||
                              (photoEvidenceUrls.length > 0 && (aiState.status === 'mismatch' || aiState.status === 'analyzing'))
@@ -993,39 +1020,42 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
 
               {/* Tab Selector */}
               <div style={{ display: 'flex', gap: '4px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
-                 {[
+                {[
                   { id: 'camera', label: 'Take Photo', icon: <CameraIcon style={{ marginRight: '6px' }} /> },
                   { id: 'upload', label: 'Upload File', icon: <UploadIcon style={{ marginRight: '6px' }} /> },
                   { id: 'url', label: 'Image URL', icon: <LinkIcon style={{ marginRight: '6px' }} /> }
-                ].map(tab => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    disabled={isSubmitting}
-                    className={`btn ${photoMode === tab.id ? 'btn-primary' : 'btn-secondary'} ${isSubmitting ? 'btn-disabled' : ''}`}
-                    style={{
-                      padding: '6px 12px',
-                      fontSize: '0.8rem',
-                      borderRadius: '4px',
-                      background: photoMode === tab.id ? 'var(--primary)' : 'transparent',
-                      borderColor: photoMode === tab.id ? 'var(--primary)' : 'var(--border-color)',
-                      color: photoMode === tab.id ? '#fff' : 'var(--text-secondary)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: isSubmitting ? 'not-allowed' : 'pointer'
-                    }}
-                    onClick={() => {
-                      if (!isSubmitting) {
-                        setPhotoMode(tab.id);
-                        stopCamera();
-                      }
-                    }}
-                  >
-                    {tab.icon}
-                    {tab.label}
-                  </button>
-                ))}
+                ].map(tab => {
+                  const isTabDisabled = isSubmitting || isUploadingPhoto;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      disabled={isTabDisabled}
+                      className={`btn ${photoMode === tab.id ? 'btn-primary' : 'btn-secondary'} ${isTabDisabled ? 'btn-disabled' : ''}`}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.8rem',
+                        borderRadius: '4px',
+                        background: photoMode === tab.id ? 'var(--primary)' : 'transparent',
+                        borderColor: photoMode === tab.id ? 'var(--primary)' : 'var(--border-color)',
+                        color: photoMode === tab.id ? '#fff' : 'var(--text-secondary)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: isTabDisabled ? 'not-allowed' : 'pointer'
+                      }}
+                      onClick={() => {
+                        if (!isTabDisabled) {
+                          setPhotoMode(tab.id);
+                          stopCamera();
+                        }
+                      }}
+                    >
+                      {tab.icon}
+                      {tab.label}
+                    </button>
+                  );
+                })}
               </div>
 
               {/* Camera Capture Mode */}
@@ -1193,12 +1223,12 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
           )}
 
           {/* Thumbnail preview list with delete overlays */}
-          {photoEvidenceUrls.length > 0 && (
+          {(photoEvidenceUrls.length > 0 || isUploadingPhoto) && (
             <div style={{ marginBottom: '20px', padding: '12px', background: 'rgba(120, 120, 120, 0.03)', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
               <small style={{ color: 'var(--text-secondary)', marginBottom: '8px', fontWeight: 700, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <CameraIcon /> CAPTURED EVIDENCE IMAGES ({photoEvidenceUrls.length}):
               </small>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
                 {photoEvidenceUrls.map((url, idx) => (
                   <div 
                     key={idx} 
@@ -1248,6 +1278,35 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
                     </button>
                   </div>
                 ))}
+                {isUploadingPhoto && (
+                  <div 
+                    style={{ 
+                      position: 'relative', 
+                      width: '80px', 
+                      height: '80px', 
+                      borderRadius: '6px', 
+                      overflow: 'hidden', 
+                      border: '2px dashed var(--primary)',
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                    }}
+                  >
+                    <span className="spinner-loader" style={{
+                      width: '18px',
+                      height: '18px',
+                      border: '2px solid rgba(255,255,255,0.3)',
+                      borderTop: '2px solid var(--primary)',
+                      borderRadius: '50%',
+                      animation: 'spin 0.8s linear infinite',
+                      marginBottom: '4px'
+                    }}></span>
+                    <small style={{ fontSize: '9px', color: 'var(--primary)' }}>Uploading...</small>
+                  </div>
+                )}
               </div>
             </div>
           )}

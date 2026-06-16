@@ -35,6 +35,55 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Ensure uploads folder exists
+const uploadsDir = path.join(__dirname, 'public', 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// Serve uploaded assets statically
+app.use('/uploads', express.static(uploadsDir));
+
+// Simulated Cloud Storage Upload Endpoint
+app.post('/api/upload', (req, res) => {
+  const { image } = req.body;
+  if (!image) {
+    return res.status(400).json({ success: false, error: 'No image base64 data provided.' });
+  }
+
+  try {
+    const matches = image.match(/^data:image\/([A-Za-z\-+]+);base64,(.+)$/);
+    if (!matches || matches.length !== 3) {
+      return res.status(400).json({ success: false, error: 'Invalid base64 image data URL format.' });
+    }
+
+    const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1];
+    const dataBuffer = Buffer.from(matches[2], 'base64');
+    const filename = `evidence_${Date.now()}_${Math.random().toString(36).substr(2, 6)}.${ext}`;
+    const filePath = path.join(uploadsDir, filename);
+
+    fs.writeFileSync(filePath, dataBuffer);
+
+    const publicUrl = `http://localhost:${PORT}/uploads/${filename}`;
+    console.log(`💾 [LOCAL CLOUD STORAGE] Simulated upload complete: ${filePath} -> ${publicUrl}`);
+
+    res.status(200).json({
+      success: true,
+      url: publicUrl
+    });
+  } catch (err) {
+    console.error('File upload error:', err);
+    res.status(500).json({ success: false, error: 'Local storage write failed.' });
+  }
+});
+
 import rentalsRouter from './routes/rentals.js';
 import dashboardRouter from './routes/dashboard.js';
 import claimsRouter from './routes/claims.js';
