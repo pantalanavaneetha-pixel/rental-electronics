@@ -8,7 +8,7 @@ import { AuthProvider } from './context/AuthContext.jsx'
 // Dynamically determine the backend URL.
 // In development, it defaults to http://localhost:5000.
 // In production, it uses VITE_API_URL or the deployed Render backend URL.
-const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:5000' : 'https://your-deployed-backend-url.onrender.com');
+const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:5000' : window.location.origin);
 
 // 1. Intercept all window.fetch calls
 const originalFetch = window.fetch;
