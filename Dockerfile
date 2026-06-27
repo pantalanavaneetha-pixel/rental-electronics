@@ -5,13 +5,9 @@
 FROM node:18-alpine AS client-builder
 WORKDIR /app
 
-# Copy root lockfile and packages
-COPY package*.json ./
-COPY frontend/package*.json ./frontend/
+# Copy all files so npm workspaces can resolve correctly
+COPY . .
 RUN npm install
-
-# Copy frontend source and build Vite bundle
-COPY frontend/ ./frontend/
 RUN npm run build -w frontend
 
 # Stage 2: Setup production server
