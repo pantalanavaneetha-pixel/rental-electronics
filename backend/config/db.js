@@ -296,7 +296,7 @@ if (useSqlite) {
             kyc_status VARCHAR(255) NOT NULL DEFAULT 'Verified',
             password VARCHAR(255),
             role VARCHAR(255) NOT NULL DEFAULT 'Customer',
-            created_at VARCHAR(255) NOT NULL DEFAULT CURRENT_TIMESTAMP::text
+            created_at VARCHAR(255) NOT NULL DEFAULT (CURRENT_TIMESTAMP::text)
           )
         `);
 
@@ -307,7 +307,7 @@ if (useSqlite) {
             category VARCHAR(255) NOT NULL,
             base_cost REAL NOT NULL,
             status VARCHAR(255) DEFAULT 'Available',
-            created_at VARCHAR(255) NOT NULL DEFAULT CURRENT_TIMESTAMP::text
+            created_at VARCHAR(255) NOT NULL DEFAULT (CURRENT_TIMESTAMP::text)
           )
         `);
 
@@ -323,7 +323,7 @@ if (useSqlite) {
             initial_condition_notes TEXT,
             status VARCHAR(255) DEFAULT 'Active',
             customer_email VARCHAR(255),
-            created_at VARCHAR(255) NOT NULL DEFAULT CURRENT_TIMESTAMP::text
+            created_at VARCHAR(255) NOT NULL DEFAULT (CURRENT_TIMESTAMP::text)
           )
         `);
 
@@ -340,7 +340,7 @@ if (useSqlite) {
             payment_method VARCHAR(255),
             settlement_notes TEXT,
             photo_evidence_urls TEXT,
-            settled_on VARCHAR(255) NOT NULL DEFAULT CURRENT_TIMESTAMP::text,
+            settled_on VARCHAR(255) NOT NULL DEFAULT (CURRENT_TIMESTAMP::text),
             settled_at VARCHAR(255),
             settlement_status VARCHAR(255),
             ai_explanation TEXT,
@@ -358,7 +358,7 @@ if (useSqlite) {
             subject VARCHAR(255),
             message TEXT NOT NULL,
             status VARCHAR(255) NOT NULL DEFAULT 'Sent',
-            created_at VARCHAR(255) NOT NULL DEFAULT CURRENT_TIMESTAMP::text
+            created_at VARCHAR(255) NOT NULL DEFAULT (CURRENT_TIMESTAMP::text)
           )
         `);
 
