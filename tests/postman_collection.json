@@ -1,0 +1,375 @@
+{
+  "info": {
+    "_postman_id": "8f9a2b1c-7722-4e4b-bb99-3c99a0b12c14",
+    "name": "One Point Solutions - Rental Settlement Engine Pipeline",
+    "description": "Postman E2E test collection for checking electronic equipment rental lifecycle: Booking -> Return -> Claims -> AI Notes -> Settlement -> Dashboard Logs.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Reset Database",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "pm.test(\"Success is true\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.success).to.eql(true);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/reset",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "reset"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "2. Create Rental Contract",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 201\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Rental successfully created\", function () {",
+              "    pm.expect(jsonData.success).to.eql(true);",
+              "    pm.expect(jsonData.data.id).to.be.a('string');",
+              "});",
+              "// Save rentalId to collection variables",
+              "pm.collectionVariables.set(\"activeRentalId\", jsonData.data.id);",
+              "pm.collectionVariables.set(\"customerEmail\", jsonData.data.customer_email);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"userName\": \"E2E Postman Tester\",\n  \"userEmail\": \"postman.tester@example.com\",\n  \"userPhone\": \"+919988776655\",\n  \"isCorporate\": false,\n  \"kycStatus\": \"Verified\",\n  \"address\": \"Vipul Tech Square, Golf Course Road, Sector 43, Gurgaon\",\n  \"deviceSerial\": \"SN-TEST-PM-777\",\n  \"deviceCategory\": \"MacBook Pro M3\",\n  \"deviceBaseCost\": 150000,\n  \"startDate\": \"2026-06-01\",\n  \"endDate\": \"2026-06-08\",\n  \"securityDeposit\": 50000,\n  \"baseTariff\": 5000,\n  \"initialConditionNotes\": \"Factory pristine condition in bubble-wrap.\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/rentals",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "rentals"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "3. Get Dashboard Output (Under Held Status)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "var activeId = pm.collectionVariables.get(\"activeRentalId\");",
+              "var record = jsonData.find(r => r.rentalId === activeId);",
+              "pm.test(\"Record exists in dashboard outputs\", function () {",
+              "    pm.expect(record).to.not.be.undefined;",
+              "    pm.expect(record.settlementStatus).to.eql(\"Held\");",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/records",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "records"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "4. Process Return & Claims (Return Assessment)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Claim successfully created under review\", function () {",
+              "    pm.expect(jsonData.success).to.eql(true);",
+              "    pm.expect(jsonData.lateFee.daysOverdue).to.eql(4);",
+              "    pm.expect(jsonData.lateFee.lateFeeCharged).to.eql(5000);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"daysOverdue\": 4,\n  \"securityDepositHeld\": 50000,\n  \"damages\": [\n    { \"type\": \"Cracked Screen\", \"cost\": 10000, \"multiplier\": 1.0 },\n    { \"type\": \"Body Dents\", \"cost\": 3750, \"multiplier\": 1.0 }\n  ],\n  \"triageFlag\": false,\n  \"photoEvidenceUrl\": \"https://images.unsplash.com/photo-1595206133361-b1fe343e5e23\",\n  \"description\": \"Screen cracked from desk drop and back denting.\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/claims/{{activeRentalId}}/process",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "claims",
+            "{{activeRentalId}}",
+            "process"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "5. Get Settlement Breakdown (Deductions)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Deduction metrics are mathematically correct\", function () {",
+              "    pm.expect(jsonData.base_deposit).to.eql(50000);",
+              "    pm.expect(jsonData.damage_deduction).to.eql(13750); // 10000 + 3750",
+              "    pm.expect(jsonData.late_fees).to.eql(5000); // 4 days * 1250",
+              "    pm.expect(jsonData.final_net_refund).to.eql(31250); // 50000 - 13750 - 5000",
+              "    pm.expect(jsonData.aiPrompt).to.not.be.empty;",
+              "});",
+              "pm.collectionVariables.set(\"aiPromptText\", jsonData.aiPrompt);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/settlements/{{activeRentalId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "settlements",
+            "{{activeRentalId}}"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "6. Run Gemini Notes Generator",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"AI Notes generated successfully\", function () {",
+              "    pm.expect(jsonData.success).to.eql(true);",
+              "    pm.expect(jsonData.notes).to.contain(\"Post-rental check-in\");",
+              "});",
+              "pm.collectionVariables.set(\"generatedRemarks\", jsonData.notes);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"prompt\": \"{{aiPromptText}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/ai/generate-notes",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "ai",
+            "generate-notes"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "7. Settle Claim",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Status changed to Settled\", function () {",
+              "    pm.expect(jsonData.settlementStatus).to.eql(\"Settled\");",
+              "    pm.expect(jsonData.sentEmail).to.eql(true);",
+              "    pm.expect(jsonData.sentWhatsApp).to.eql(true);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"notes\": \"{{generatedRemarks}}\",\n  \"paymentMethod\": \"UPI Refund Transfer\",\n  \"status\": \"SETTLED\",\n  \"trackingStatus\": \"SETTLED\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/settlements/{{activeRentalId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "settlements",
+            "{{activeRentalId}}"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "8. Verify Messaging Logs",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "var jsonData = pm.response.json();",
+              "pm.test(\"Audit contains confirmations and reminders\", function () {",
+              "    pm.expect(jsonData.success).to.eql(true);",
+              "    pm.expect(jsonData.data.length).to.be.at.least(2);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/notifications?rentalId={{activeRentalId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "notifications"
+          ],
+          "query": [
+            {
+              "key": "rentalId",
+              "value": "{{activeRentalId}}"
+            }
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000/api",
+      "type": "string"
+    },
+    {
+      "key": "activeRentalId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "customerEmail",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "aiPromptText",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "generatedRemarks",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}

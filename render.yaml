@@ -1,0 +1,22 @@
+# Render blueprint configuration for full-stack deployment
+# File: render.yaml
+services:
+  - type: web
+    name: rental-electronics-settlement
+    env: node
+    # Build full-stack and package Vite into backend static directory
+    buildCommand: npm install && npm run build
+    startCommand: node backend/server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: GEMINI_API_KEY
+        sync: false # User will set this in the Render dashboard
+      - key: SQLITE_DB_PATH
+        value: /app/data/database.sqlite
+    disk:
+      name: sqlite-db-disk
+      mountPath: /app/data
+      sizeGB: 1
