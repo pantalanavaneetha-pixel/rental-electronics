@@ -29,9 +29,6 @@ COPY backend/ ./backend/
 # Inject Vite production assets into Express public/client folder
 COPY --from=client-builder /app/frontend/dist ./backend/public/client
 
-# Copy SQLite seed database
-COPY database.sqlite ./database.sqlite
-
 EXPOSE 5000
 ENV PORT=5000
 ENV NODE_ENV=production
