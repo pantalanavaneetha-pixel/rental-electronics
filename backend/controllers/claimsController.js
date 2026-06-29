@@ -6,6 +6,7 @@ import { calculateSettlement, calculateLateFee, getDynamicDamageCost } from '../
 import { AppError } from '../middlewares/errorHandler.js';
 import { generateAiNotes } from '../utils/aiNotesGenerator.js';
 import { sendEmail, sendWhatsApp } from '../utils/notifier.js';
+import crypto from 'crypto';
 
 /**
  * Evaluates, captures and settles a damage claim contract.
@@ -89,7 +90,7 @@ export const processClaim = async (req, res, next) => {
       const typeLower = (d.type || '').toLowerCase();
       return !typeLower.includes('late return penalty') && !typeLower.includes('late fee');
     }).map(d => {
-      const computedCost = getDynamicDamageCost(d.type, rental.device_category, rental.device_base_cost);
+      const computedCost = getDynamicDamageCost(d.type, rental.device_category, rental.security_deposit);
       return {
         ...d,
         cost: computedCost > 0 ? computedCost : (parseFloat(d.cost) || 0)
@@ -178,15 +179,18 @@ export const processClaim = async (req, res, next) => {
       ? `[EMERGENCY TRIAGE] Water/fluid damage detected. Device immediately routed to ISOLATED_REPAIR queue at ${new Date().toISOString()}. Battery isolation required before handling.`
       : null;
 
+    const claimId = `claim-${crypto.randomUUID()}`;
+
     const claimRes = await client.query(
       `INSERT INTO claims (
-        rental_id, damage_description, severity_multiplier,
+        id, rental_id, damage_description, severity_multiplier,
         deduction_amount, final_refund,
         days_overdue, late_fee_charged,
         settlement_notes, photo_evidence_urls,
         ai_explanation, customer_friendly_notes, ai_prompt
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
       [
+        claimId,
         rentalId,
         damageDescription,
         maxMultiplier,

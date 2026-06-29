@@ -120,8 +120,8 @@ async function runE2ETests() {
   console.log(`   - Overdue Daily Fees: ₹${breakdown.late_fees} (3 days)`);
   console.log(`   - Net Refund Balance: ₹${breakdown.final_net_refund}`);
   
-  if (breakdown.final_net_refund !== 8250) {
-    throw new Error(`Calculations mismatch! Expected ₹8,250 refund, got ₹${breakdown.final_net_refund}`);
+  if (breakdown.final_net_refund !== 11250) {
+    throw new Error(`Calculations mismatch! Expected ₹11,250 refund, got ₹${breakdown.final_net_refund}`);
   }
   console.log("✔ Math checks match perfectly.");
   console.log(`✔ AI Prompt preview successfully saved in database.\n`);

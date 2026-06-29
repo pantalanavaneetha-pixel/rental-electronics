@@ -60,18 +60,18 @@ export function calculateLateFee(daysOverdue) {
 }
 
 /**
- * Calculates dynamic repair/damage deductions based on device category and base cost.
- * Laptop Cracked Screen: 15%
- * Camera Cracked Screen: 16%
- * Phone Cracked Screen: 10%
- * Tablet Cracked Screen: 12%
+ * Calculates dynamic repair/damage deductions based on device category and security deposit held.
+ * Laptop Screen: 50% of deposit
+ * Phone Screen: 30% of deposit
+ * Tablet Screen: 40% of deposit
+ * Water/Fluid Damage: 100% of deposit (total loss)
  */
-export function getDynamicDamageCost(damageName, category, baseCost) {
-  const base = parseFloat(baseCost) || 0;
+export function getDynamicDamageCost(damageName, category, depositHeld) {
+  const deposit = parseFloat(depositHeld) || 0;
   const cat = (category || '').toLowerCase();
   const dmg = (damageName || '').toLowerCase();
 
-  if (base <= 0) {
+  if (deposit <= 0) {
     if (dmg.includes('screen')) return 10000;
     if (dmg.includes('dent') || dmg.includes('scratch')) return 3750;
     if (dmg.includes('water') || dmg.includes('fluid')) return 20833;
@@ -93,51 +93,48 @@ export function getDynamicDamageCost(damageName, category, baseCost) {
   }
 
   if (dmg.includes('screen')) {
-    if (group === 'laptop') return Math.round(base * 0.15);
-    if (group === 'camera') return Math.round(base * 0.16);
-    if (group === 'tablet') return Math.round(base * 0.12);
-    if (group === 'phone') return Math.round(base * 0.10);
-    return Math.round(base * 0.12);
+    if (group === 'laptop') return Math.round(deposit * 0.50);
+    if (group === 'camera') return Math.round(deposit * 0.50);
+    if (group === 'tablet') return Math.round(deposit * 0.40);
+    if (group === 'phone') return Math.round(deposit * 0.30);
+    return Math.round(deposit * 0.40);
   }
 
   if (dmg.includes('dent') || dmg.includes('scratch')) {
-    if (group === 'laptop') return Math.round(base * 0.05);
-    if (group === 'camera') return Math.round(base * 0.05);
-    if (group === 'tablet') return Math.round(base * 0.04);
-    if (group === 'phone') return Math.round(base * 0.03);
-    return Math.round(base * 0.04);
+    if (group === 'laptop') return Math.round(deposit * 0.15);
+    if (group === 'camera') return Math.round(deposit * 0.15);
+    if (group === 'tablet') return Math.round(deposit * 0.12);
+    if (group === 'phone') return Math.round(deposit * 0.10);
+    return Math.round(deposit * 0.12);
   }
 
   if (dmg.includes('water') || dmg.includes('fluid')) {
-    if (group === 'laptop') return Math.round(base * 0.30);
-    if (group === 'camera') return Math.round(base * 0.35);
-    if (group === 'tablet') return Math.round(base * 0.25);
-    if (group === 'phone') return Math.round(base * 0.20);
-    return Math.round(base * 0.25);
+    // Water/Fluid damage represents a critical failure/total loss of the escrowed deposit
+    return Math.round(deposit * 1.00);
   }
 
   if (dmg.includes('port') || dmg.includes('charging')) {
-    if (group === 'laptop') return Math.round(base * 0.08);
-    if (group === 'camera') return Math.round(base * 0.08);
-    if (group === 'tablet') return Math.round(base * 0.06);
-    if (group === 'phone') return Math.round(base * 0.05);
-    return Math.round(base * 0.06);
+    if (group === 'laptop') return Math.round(deposit * 0.25);
+    if (group === 'camera') return Math.round(deposit * 0.25);
+    if (group === 'tablet') return Math.round(deposit * 0.20);
+    if (group === 'phone') return Math.round(deposit * 0.15);
+    return Math.round(deposit * 0.20);
   }
 
   if (dmg.includes('power') || dmg.includes('defect') || dmg.includes('hardware')) {
-    if (group === 'laptop') return Math.round(base * 0.20);
-    if (group === 'camera') return Math.round(base * 0.20);
-    if (group === 'tablet') return Math.round(base * 0.15);
-    if (group === 'phone') return Math.round(base * 0.12);
-    return Math.round(base * 0.15);
+    if (group === 'laptop') return Math.round(deposit * 0.60);
+    if (group === 'camera') return Math.round(deposit * 0.60);
+    if (group === 'tablet') return Math.round(deposit * 0.50);
+    if (group === 'phone') return Math.round(deposit * 0.40);
+    return Math.round(deposit * 0.50);
   }
 
   if (dmg.includes('accessories') || dmg.includes('charger') || dmg.includes('cable')) {
-    if (group === 'laptop') return Math.round(base * 0.04);
-    if (group === 'camera') return Math.round(base * 0.04);
-    if (group === 'tablet') return Math.round(base * 0.03);
-    if (group === 'phone') return Math.round(base * 0.02);
-    return Math.round(base * 0.03);
+    if (group === 'laptop') return Math.round(deposit * 0.12);
+    if (group === 'camera') return Math.round(deposit * 0.12);
+    if (group === 'tablet') return Math.round(deposit * 0.10);
+    if (group === 'phone') return Math.round(deposit * 0.08);
+    return Math.round(deposit * 0.10);
   }
 
   return 0;

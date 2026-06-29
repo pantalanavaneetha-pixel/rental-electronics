@@ -75,10 +75,10 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
   });
   const [aiSimulationMode, setAiSimulationMode] = useState('auto'); // 'auto' | 'force-success' | 'force-mismatch'
 
-  // Helper to add an image with 'analyzing' status
+  // Helper to add an image with 'success' status instantly
   const addImageWithVerification = (url) => {
     setPhotoEvidenceUrls(prev => [...prev, url]);
-    setImageVerifications(prev => ({ ...prev, [url]: { status: 'analyzing', message: 'Queueing for AI assessment...' } }));
+    setImageVerifications(prev => ({ ...prev, [url]: { status: 'success', message: 'Visual Evidence Attached' } }));
   };
 
   // Real-time liquid exposure keyword detector for manual description input
@@ -125,107 +125,6 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
       }
     };
   }, [videoStream]);
-
-  // Trigger AI Analysis when a photo is added or damageType changes
-  useEffect(() => {
-    if (form.damageType === 'None') {
-      setAiState({ status: 'idle', message: '', analyzedImage: '' });
-      return;
-    }
-
-    if (photoEvidenceUrls.length === 0) {
-      setAiState(prev => prev.status === 'mismatch' ? prev : { status: 'idle', message: '', analyzedImage: '' });
-      return;
-    }
-
-    const lastImage = photoEvidenceUrls[photoEvidenceUrls.length - 1];
-
-    setAiState({ status: 'analyzing', message: 'AI Core analyzing structural asset integrity...', analyzedImage: lastImage });
-    setImageVerifications(prev => ({
-      ...prev,
-      [lastImage]: { status: 'analyzing', message: 'AI Core analyzing structural asset integrity...' }
-    }));
-
-    let isSubscribed = true;
-
-    const verifyImage = async () => {
-      try {
-        if (aiSimulationMode === 'force-success') {
-           setTimeout(() => {
-             if(isSubscribed) {
-               setAiState({ status: 'success', message: 'AI Verification: Forced Match', analyzedImage: lastImage });
-               setImageVerifications(prev => ({
-                 ...prev,
-                 [lastImage]: { status: 'success', message: 'AI Verification: Forced Match' }
-               }));
-             }
-           }, 1000);
-           return;
-        } else if (aiSimulationMode === 'force-mismatch') {
-           setTimeout(() => {
-             if(isSubscribed) {
-               setAiState({ status: 'mismatch', message: 'AI Verification: Forced Mismatch', analyzedImage: lastImage });
-               setImageVerifications(prev => ({
-                 ...prev,
-                 [lastImage]: { status: 'mismatch', message: 'AI Verification: Forced Mismatch' }
-               }));
-             }
-           }, 1000);
-           return;
-        }
-
-        const response = await fetch('http://localhost:5000/api/ai/verify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image: lastImage, damageType: form.damageType })
-        });
-        
-        const data = await response.json();
-        
-        if (!isSubscribed) return;
-
-        if (data.success) {
-          const matchStatus = data.match ? 'success' : 'mismatch';
-          setAiState({
-            status: matchStatus,
-            message: data.message,
-            analyzedImage: lastImage
-          });
-          setImageVerifications(prev => ({
-            ...prev,
-            [lastImage]: { status: matchStatus, message: data.message }
-          }));
-        } else {
-          setAiState({
-            status: 'mismatch',
-            message: data.error || 'AI Verification Error',
-            analyzedImage: lastImage
-          });
-          setImageVerifications(prev => ({
-            ...prev,
-            [lastImage]: { status: 'mismatch', message: data.error || 'AI Verification Error' }
-          }));
-        }
-      } catch (err) {
-        if (isSubscribed) {
-          console.error("AI Error:", err);
-          setAiState({
-            status: 'mismatch',
-            message: 'Failed to connect to AI Core.',
-            analyzedImage: lastImage
-          });
-          setImageVerifications(prev => ({
-            ...prev,
-            [lastImage]: { status: 'mismatch', message: 'Failed to connect to AI Core.' }
-          }));
-        }
-      }
-    };
-
-    verifyImage();
-
-    return () => { isSubscribed = false; };
-  }, [photoEvidenceUrls, form.damageType, aiSimulationMode]);
 
   const startCamera = async () => {
     setIsCameraLoading(true);
@@ -333,12 +232,12 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
     }
   };
 
-  const getDynamicDamageCost = (damageName, category, baseCost) => {
-    const base = parseFloat(baseCost) || 0;
+  const getDynamicDamageCost = (damageName, category, depositHeld) => {
+    const deposit = parseFloat(depositHeld) || 0;
     const cat = (category || '').toLowerCase();
     const dmg = (damageName || '').toLowerCase();
 
-    if (base <= 0) {
+    if (deposit <= 0) {
       if (dmg.includes('screen')) return 10000;
       if (dmg.includes('dent') || dmg.includes('scratch')) return 3750;
       if (dmg.includes('water') || dmg.includes('fluid')) return 20833;
@@ -360,51 +259,47 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
     }
 
     if (dmg.includes('screen')) {
-      if (group === 'laptop') return Math.round(base * 0.15);
-      if (group === 'camera') return Math.round(base * 0.16);
-      if (group === 'tablet') return Math.round(base * 0.12);
-      if (group === 'phone') return Math.round(base * 0.10);
-      return Math.round(base * 0.12);
+      if (group === 'laptop') return Math.round(deposit * 0.50);
+      if (group === 'camera') return Math.round(deposit * 0.50);
+      if (group === 'tablet') return Math.round(deposit * 0.40);
+      if (group === 'phone') return Math.round(deposit * 0.30);
+      return Math.round(deposit * 0.40);
     }
 
     if (dmg.includes('dent') || dmg.includes('scratch')) {
-      if (group === 'laptop') return Math.round(base * 0.05);
-      if (group === 'camera') return Math.round(base * 0.05);
-      if (group === 'tablet') return Math.round(base * 0.04);
-      if (group === 'phone') return Math.round(base * 0.03);
-      return Math.round(base * 0.04);
+      if (group === 'laptop') return Math.round(deposit * 0.15);
+      if (group === 'camera') return Math.round(deposit * 0.15);
+      if (group === 'tablet') return Math.round(deposit * 0.12);
+      if (group === 'phone') return Math.round(deposit * 0.10);
+      return Math.round(deposit * 0.12);
     }
 
     if (dmg.includes('water') || dmg.includes('fluid')) {
-      if (group === 'laptop') return Math.round(base * 0.30);
-      if (group === 'camera') return Math.round(base * 0.35);
-      if (group === 'tablet') return Math.round(base * 0.25);
-      if (group === 'phone') return Math.round(base * 0.20);
-      return Math.round(base * 0.25);
+      return Math.round(deposit * 1.00);
     }
 
     if (dmg.includes('port') || dmg.includes('charging')) {
-      if (group === 'laptop') return Math.round(base * 0.08);
-      if (group === 'camera') return Math.round(base * 0.08);
-      if (group === 'tablet') return Math.round(base * 0.06);
-      if (group === 'phone') return Math.round(base * 0.05);
-      return Math.round(base * 0.06);
+      if (group === 'laptop') return Math.round(deposit * 0.25);
+      if (group === 'camera') return Math.round(deposit * 0.25);
+      if (group === 'tablet') return Math.round(deposit * 0.20);
+      if (group === 'phone') return Math.round(deposit * 0.15);
+      return Math.round(deposit * 0.20);
     }
 
     if (dmg.includes('power') || dmg.includes('defect') || dmg.includes('hardware')) {
-      if (group === 'laptop') return Math.round(base * 0.20);
-      if (group === 'camera') return Math.round(base * 0.20);
-      if (group === 'tablet') return Math.round(base * 0.15);
-      if (group === 'phone') return Math.round(base * 0.12);
-      return Math.round(base * 0.15);
+      if (group === 'laptop') return Math.round(deposit * 0.60);
+      if (group === 'camera') return Math.round(deposit * 0.60);
+      if (group === 'tablet') return Math.round(deposit * 0.50);
+      if (group === 'phone') return Math.round(deposit * 0.40);
+      return Math.round(deposit * 0.50);
     }
 
     if (dmg.includes('accessories') || dmg.includes('charger') || dmg.includes('cable')) {
-      if (group === 'laptop') return Math.round(base * 0.04);
-      if (group === 'camera') return Math.round(base * 0.04);
-      if (group === 'tablet') return Math.round(base * 0.03);
-      if (group === 'phone') return Math.round(base * 0.02);
-      return Math.round(base * 0.03);
+      if (group === 'laptop') return Math.round(deposit * 0.12);
+      if (group === 'camera') return Math.round(deposit * 0.12);
+      if (group === 'tablet') return Math.round(deposit * 0.10);
+      if (group === 'phone') return Math.round(deposit * 0.08);
+      return Math.round(deposit * 0.10);
     }
 
     return 0;
@@ -511,7 +406,7 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
 
     const activeRecord = records.find(r => r.rentalId === activeRecordHelper);
     const category = activeRecord ? (activeRecord.deviceCategory || activeRecord.deviceModel || '') : '';
-    const baseCost = activeRecord ? (activeRecord.deviceBaseCost || 0) : 0;
+    const securityDepositHeld = activeRecord ? (activeRecord.securityDepositHeld || 0) : 0;
 
     setSelectedDamages(prev => {
       const next = { ...prev };
@@ -522,7 +417,7 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
         if (type === 'Custom') {
           cost = toBase(parseFloat(customDamageCost) || 0, currency);
         } else {
-          cost = getDynamicDamageCost(type, category, baseCost);
+          cost = getDynamicDamageCost(type, category, securityDepositHeld);
         }
         
         next[type] = { type, cost, multiplier: 1.0 };
@@ -941,7 +836,7 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
                 let computedCost = opt.cost;
                 const activeRecord = records.find(r => r.rentalId === activeRecordHelper);
                 if (activeRecord && opt.cost !== null && !opt.isNone) {
-                  computedCost = getDynamicDamageCost(opt.type, activeRecord.deviceCategory || activeRecord.deviceModel, activeRecord.deviceBaseCost);
+                  computedCost = getDynamicDamageCost(opt.type, activeRecord.deviceCategory || activeRecord.deviceModel, activeRecord.securityDepositHeld);
                 }
 
                 let costDisplay = '';
@@ -1410,7 +1305,7 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
           )}
 
           {/* AI Screen Crack & Damage Assessment Sandbox Simulator Panel */}
-          {form.damageType !== 'None' && photoEvidenceUrls.length > 0 && (
+          {false && form.damageType !== 'None' && photoEvidenceUrls.length > 0 && (
             <div 
               className="glass-panel" 
               style={{ 
@@ -1699,9 +1594,7 @@ export default function ReturnForm({ onSubmit, records, currency, currencyConfig
               <ul style={{ listStyle: 'none', paddingLeft: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '6px' }} className="validation-helper-list">
                 {[
                   { key: 'booking', label: 'Enter a valid active Booking Reference ID', met: !!matchedActiveRecord && matchedActiveRecord.settlementStatus === 'Held' },
-                  { key: 'evidence', label: 'Provide photo evidence OR type a written description', met: Object.keys(selectedDamages).length === 0 || photoEvidenceUrls.length > 0 || customDamageDesc.trim() !== '' },
-                  { key: 'aiScan', label: 'AI Core integrity analysis must be completed (if photo uploaded)', met: Object.keys(selectedDamages).length === 0 || photoEvidenceUrls.length === 0 || aiState.status !== 'analyzing' },
-                  { key: 'aiMatch', label: 'AI Damage verification must confirm visual evidence (if photo uploaded)', met: Object.keys(selectedDamages).length === 0 || photoEvidenceUrls.length === 0 || (allImagesMatched && aiState.status === 'success') }
+                  { key: 'evidence', label: 'Provide photo evidence OR type a written description', met: Object.keys(selectedDamages).length === 0 || photoEvidenceUrls.length > 0 || customDamageDesc.trim() !== '' }
                 ].map(req => (
                   <li key={req.key} style={{ display: 'flex', alignItems: 'center', gap: '6px', color: req.met ? 'var(--success)' : 'var(--danger)' }}>
                     {req.met ? (

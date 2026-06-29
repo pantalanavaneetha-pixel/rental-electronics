@@ -2,6 +2,7 @@
 // File: utils/notifier.js
 
 import { query } from '../config/db.js';
+import crypto from 'crypto';
 
 /**
  * Simulates sending an Email via Email API
@@ -22,14 +23,15 @@ export async function sendEmail({ to, subject, body, rentalId }) {
   const messageId = `email-${Math.random().toString(36).substr(2, 9)}`;
   
   if (rentalId) {
+    const notificationId = `notif-${crypto.randomUUID()}`;
     try {
       await query(
-        `INSERT INTO notifications (rental_id, recipient, type, subject, message, status) 
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [rentalId, to, 'Email', subject, body, 'Sent']
+        `INSERT INTO notifications (id, rental_id, recipient, type, subject, message, status) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [notificationId, rentalId, to, 'Email', subject, body, 'Sent']
       );
     } catch (e) {
-      console.error('Error logging email notification to SQLite database:', e.message);
+      console.error('Error logging email notification to SQLite/PostgreSQL database:', e.message);
     }
   }
   
@@ -57,14 +59,15 @@ export async function sendWhatsApp({ to, message, rentalId }) {
   const messageId = `wa-${Math.random().toString(36).substr(2, 9)}`;
   
   if (rentalId) {
+    const notificationId = `notif-${crypto.randomUUID()}`;
     try {
       await query(
-        `INSERT INTO notifications (rental_id, recipient, type, subject, message, status) 
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [rentalId, to, 'WhatsApp', null, message, 'Sent']
+        `INSERT INTO notifications (id, rental_id, recipient, type, subject, message, status) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [notificationId, rentalId, to, 'WhatsApp', null, message, 'Sent']
       );
     } catch (e) {
-      console.error('Error logging WhatsApp notification to SQLite database:', e.message);
+      console.error('Error logging WhatsApp notification to SQLite/PostgreSQL database:', e.message);
     }
   }
   
